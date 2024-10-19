@@ -23,7 +23,7 @@ namespace HelloWorld
         // MT - кол-во скалярных произведений, считающихся параллельно
         // P * MT - размер локальной рабочей группы
         const nuint P = 1;
-        const nuint MT = 64;
+        const nuint MT = 16;
         static unsafe void Main(string[] args)
         {
             var cl = CL.GetApi();
@@ -61,16 +61,8 @@ namespace HelloWorld
 
             // Create OpenCL kernel
             int err_code;
-            nint kernel = cl.CreateKernel(program, "gemv3", out err_code);
+            nint kernel = cl.CreateKernel(program, "mul_simple", out err_code);
             if (kernel == IntPtr.Zero)
-            {
-                Console.WriteLine($"Failed to create kernel: {err_code}");
-                Cleanup(cl, context, commandQueue, program, kernel, memObjects);
-                return;
-            }
-
-            nint kernel_reduce = cl.CreateKernel(program, "reduce_rows", out err_code);
-            if (kernel_reduce == IntPtr.Zero)
             {
                 Console.WriteLine($"Failed to create kernel: {err_code}");
                 Cleanup(cl, context, commandQueue, program, kernel, memObjects);
@@ -88,10 +80,6 @@ namespace HelloWorld
             void* b_p = NativeMemory.AlignedAlloc((uint)M_COLS * sizeof(real), 4096);
             var b = new Span<real>(b_p, (int)M_COLS);
 
-            // промежуточная матрица для хранения частичных скалярных произведений
-            void* partial_dots_p = NativeMemory.AlignedAlloc((uint)M_ROWS * P * sizeof(real), 4096);
-            var partial_dots = new Span<real>(partial_dots_p, (int)(M_ROWS * P));
-
             for (int j = 0; j < M_COLS; j++)
             {
                 {
@@ -104,14 +92,13 @@ namespace HelloWorld
                 b[j] = 1;
             }
             Console.WriteLine($"Матрица {M_ROWS} x {M_COLS}");
-            Console.WriteLine($"MT = {MT}, P = {P}");
+            Console.WriteLine($"MT = {MT}");
             var sw_gpu = new Stopwatch();
             sw_gpu.Start();
 
             memObjects[0] = cl.CreateBuffer(context, MemFlags.ReadOnly | MemFlags.UseHostPtr, (nuint)sizeof(real) * M_COLS * M_ROWS, m_p, null);
             memObjects[1] = cl.CreateBuffer(context, MemFlags.ReadOnly | MemFlags.UseHostPtr, sizeof(real) * M_COLS, b_p, null);
             memObjects[2] = cl.CreateBuffer(context, MemFlags.WriteOnly | MemFlags.UseHostPtr, sizeof(real) * M_ROWS, result_p, null);
-            nint partial_dots_obj = cl.CreateBuffer(context, MemFlags.ReadWrite | MemFlags.UseHostPtr, sizeof(real) * M_ROWS * P, partial_dots_p, null);
 
             if (memObjects[0] == IntPtr.Zero || memObjects[1] == IntPtr.Zero || memObjects[2] == IntPtr.Zero)
             {
@@ -120,24 +107,18 @@ namespace HelloWorld
                 return;
             }
 
-            nuint[] globalWorkSize = new nuint[2] { M_ROWS, P };
-            nuint[] localWorkSize = new nuint[2] { MT, P };
+            nuint[] globalWorkSize = new nuint[1] { M_ROWS };
+            nuint[] localWorkSize = new nuint[1] { MT };
 
             int errNum = 0;
             {
                 var cols = M_COLS;
                 var rows = M_ROWS;
-                var p = P;
                 errNum |= cl.SetKernelArg(kernel, 0, (nuint)sizeof(nint), ref memObjects[0]);
                 errNum |= cl.SetKernelArg(kernel, 1, (nuint)sizeof(nint), ref memObjects[1]);
-                errNum |= cl.SetKernelArg(kernel, 2, (nuint)sizeof(nint), ref partial_dots_obj);
+                errNum |= cl.SetKernelArg(kernel, 2, (nuint)sizeof(nint), ref memObjects[2]);
                 errNum |= cl.SetKernelArg(kernel, 3, (nuint)sizeof(int), ref cols);
                 errNum |= cl.SetKernelArg(kernel, 4, (nuint)sizeof(int), ref rows);
-                errNum |= cl.SetKernelArg(kernel, 5, (nuint)sizeof(real) * localWorkSize[0] * localWorkSize[1], null);
-
-                errNum |= cl.SetKernelArg(kernel_reduce, 0, (nuint)sizeof(nint), ref partial_dots_obj);
-                errNum |= cl.SetKernelArg(kernel_reduce, 1, (nuint)sizeof(int), ref rows);
-                errNum |= cl.SetKernelArg(kernel_reduce, 2, (nuint)sizeof(int), ref p);
             }
 
             if (errNum != (int)ErrorCodes.Success)
@@ -151,7 +132,7 @@ namespace HelloWorld
             errNum = cl.EnqueueNdrangeKernel(
                     commandQueue,
                     kernel,
-                    2,
+                    1,
                     (nuint*)null,
                     globalWorkSize,
                     localWorkSize,
@@ -166,22 +147,6 @@ namespace HelloWorld
                 return;
             }
 
-            {
-                nuint one = 1;
-                nuint rows = M_ROWS;
-                errNum = cl.EnqueueNdrangeKernel(
-                        commandQueue,
-                        kernel_reduce,
-                        1,
-                        (nuint*)null,
-                        &rows,
-                        &one,
-                        0,
-                        (nint*) null,
-                        (nint*) null
-                    );
-            }
-
             if (errNum != (int) ErrorCodes.Success)
             {
                 Console.WriteLine($"Error queuing kernel for execution: {errNum}");
@@ -191,7 +156,7 @@ namespace HelloWorld
 
             void* buf = cl.EnqueueMapBuffer(
                     commandQueue,
-                    partial_dots_obj,
+                    memObjects[2],
                     true,
                     MapFlags.Read,
                     0,
@@ -211,7 +176,7 @@ namespace HelloWorld
             cl.Finish(commandQueue);
             sw_gpu.Stop();
 
-            var result = new Span<real>(buf, (int)(M_ROWS * P));
+            var result = new Span<real>(buf, (int)(M_ROWS));
             for (int j = 0; j < M_COLS; j++)
             {
                 for (int i = 0; i < M_ROWS; i++)
