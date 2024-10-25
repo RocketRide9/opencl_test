@@ -1,7 +1,6 @@
 #define real float
 #define ROW_DIM 0
 #define COL_DIM 1
-#pragma OPENCL EXTENSION cl_ext_float_atomics : enable
 
 kernel void mul(global const real *mat,
                 global const real *v,
@@ -42,8 +41,8 @@ kernel void mul(global const real *mat,
     }
 }
 
-kernel void mul_simple
-                (global const real *mat,
+kernel void mul_simple(
+                global const real *mat,
                 global const real *v,
                 global real *r,
                 int n,                      // columns
