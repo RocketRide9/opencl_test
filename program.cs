@@ -28,23 +28,10 @@ namespace HelloWorld
         {
             Random rand = new Random();
 
-            var context = Context.FromType(DeviceType.Gpu);
-
-            // Create a command-queue on the first device available
-            // on the created context
-            Platform.Get(out var platforms);
-            var platform = platforms[0];
-
-            platform.GetDevices(DeviceType.Gpu, out var devices);
-            var device = devices[0];
-
-            var command_queue = new CommandQueue(context, device);
+            SparkCL.StarterKit.GetStarterKit(out var context, out var device, out var commandQueue);
 
             // Create OpenCL program from HelloWorld.cl kernel source
             var program = SparkCL.Program.FromFilename(context, device, "HelloWorld.cl");
-
-            // Create OpenCL kernel
-            var kernel = new Kernel(program, "mul_simple");
 
             // Create memory objects that will be used as arguments to
             // kernel.  First create host memory arrays that will be
@@ -76,6 +63,8 @@ namespace HelloWorld
             var globalWork = new NDRange(M_ROWS);
             var localWork = new NDRange(MT);
 
+            // Create OpenCL kernel
+            var kernel = new Kernel(program, "mul_simple");
             kernel.SetArg(0, matBuffer);
             kernel.SetArg(1, vecBuffer);
             kernel.SetArg(2, resBuffer);
@@ -83,20 +72,20 @@ namespace HelloWorld
             kernel.SetArg(4, M_ROWS);
 
             // Queue the kernel up for execution across the array
-            command_queue.EnqueueNDRangeKernel(
+            commandQueue.EnqueueNDRangeKernel(
                 kernel,
                 new NDRange(),
                 globalWork,
                 localWork);
 
-            var res_mapped = command_queue.EnqueueMapBuffer<real>(
+            var res_mapped = commandQueue.EnqueueMapBuffer<real>(
                 resBuffer,
                 true,
                 MapFlags.Read,
                 0,
                 M_ROWS);
 
-            command_queue.Finish();
+            commandQueue.Finish();
 
             sw_gpu.Stop();
 

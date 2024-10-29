@@ -13,6 +13,23 @@ namespace SparkCL
         static public CL Api = CL.GetApi();
     }
 
+    static class StarterKit
+    {
+        // создать объекты на первом попавшемся GPU
+        static public void GetStarterKit (out Context context, out Device device, out CommandQueue commandQueue)
+        {
+            context = Context.FromType(DeviceType.Gpu);
+
+            Platform.Get(out var platforms);
+            var platform = platforms[0];
+
+            platform.GetDevices(DeviceType.Gpu, out var devices);
+            device = devices[0];
+
+            commandQueue = new CommandQueue(context, device);
+        }
+    }
+
     class Context
     {
         public nint Handle { get; }
