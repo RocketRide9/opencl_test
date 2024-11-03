@@ -1,22 +1,25 @@
 using Silk.NET.OpenCL;
 using System;
+using System.Numerics;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 
-
+// идея сократить область применения до вычисления на одном устройстве.
+// это должно упростить использования OpenCL, абстрагируя понятия контекста,
+// очереди команд и устройства.
 namespace SparkCL
 {
-    internal static class CLHandle
-    {
-        static public CL Api = CL.GetApi();
-    }
-
+    using System.Globalization;
+    using SparkOCL;
     static class StarterKit
     {
         // создать объекты на первом попавшемся GPU
-        static public void GetStarterKit (out Context context, out Device device, out CommandQueue commandQueue)
+        static public void GetStarterKit(
+            out SparkOCL.Context context,
+            out SparkOCL.Device device,
+            out SparkOCL.CommandQueue commandQueue)
         {
             context = Context.FromType(DeviceType.Gpu);
 
@@ -27,6 +30,242 @@ namespace SparkCL
             device = devices[0];
 
             commandQueue = new CommandQueue(context, device);
+        }
+    }
+
+    static class Core
+    {
+        static internal Context? context;
+        static internal CommandQueue? queue;
+        static internal SparkOCL.Device? device;
+
+        static public void Init()
+        {
+            context = Context.FromType(DeviceType.Gpu);
+
+            Platform.Get(out var platforms);
+            var platform = platforms[0];
+
+            platform.GetDevices(DeviceType.Gpu, out var devices);
+            device = devices[0];
+
+            queue = new CommandQueue(context, device);
+        }
+    }
+
+    /*
+    class Device
+    {
+        static Context context;
+        static CommandQueue queue;
+        static SparkOCL.Device device;
+
+        public Device()
+        {
+            context = Context.FromType(DeviceType.Gpu);
+
+            Platform.Get(out var platforms);
+            var platform = platforms[0];
+
+            platform.GetDevices(DeviceType.Gpu, out var devices);
+            device = devices[0];
+
+            queue = new CommandQueue(context, device);
+        }
+    }
+    */
+
+    class Program
+    {
+        SparkOCL.Program program;
+
+        public Program(string fileName)
+        {
+            program = SparkOCL.Program.FromFilename(Core.context!, Core.device!, fileName);
+        }
+
+        public SparkCL.Kernel GetKernel(string kernelName)
+        {
+            var oclKernel = new SparkOCL.Kernel(program, kernelName);
+            return new Kernel(oclKernel);
+        }
+    }
+
+    class Kernel
+    {
+        SparkOCL.Kernel kernel;
+
+        public Event Execute(NDRange globalWork, NDRange localWork)
+        {
+            Core.queue!.EnqueueNDRangeKernel(kernel, new NDRange(), globalWork, localWork, out var ev);
+            return ev;
+        }
+
+        public uint PushArg<T>(
+            SparkCL.Memory<T> buffer)
+        where T: unmanaged, INumber<T>
+        {
+            return kernel.PushArg(buffer.buffer);
+        }
+
+        public uint PushArg<T>(
+            T arg)
+        where T: unmanaged
+        {
+            return kernel.PushArg(arg);
+        }
+
+        public void SetArg<T>(
+            uint idx,
+            T arg)
+        where T: unmanaged
+        {
+            kernel.SetArg(idx, arg);
+        }
+
+        public void SetArg<T>(
+            uint idx,
+            SparkCL.Memory<T> mem)
+        where T: unmanaged, INumber<T>
+        {
+            kernel.SetArg(idx, mem.buffer);
+        }
+
+        internal Kernel(SparkOCL.Kernel kernel)
+        {
+            this.kernel = kernel;
+        }
+    }
+
+    unsafe class Memory<T>
+    where T: unmanaged, INumber<T>
+    {
+        internal Buffer<T> buffer;
+        internal void* mappedPtr;
+        internal Array<T> array;
+        public nuint Count { get => array.Count; }
+
+        public Memory(List<T> in_array, MemFlags flags = MemFlags.ReadWrite)
+        {
+            this.array = new(in_array);
+            buffer = new(Core.context!, flags | MemFlags.UseHostPtr, this.array);
+        }
+
+        public Memory(StreamReader file, MemFlags flags = MemFlags.ReadWrite)
+        {
+            var sizeStr = file.ReadLine();
+            var size = nuint.Parse(sizeStr!);
+            this.array = new Array<T>(size);
+
+            for (int i = 0; i < (int)size; i++)
+            {
+                var row = file.ReadLine();
+                T elem;
+                try {
+                    elem = T.Parse(row!, CultureInfo.InvariantCulture);
+                } catch (SystemException) {
+                    throw new System.Exception($"i = {i}");
+                }
+                array[i] = elem;
+            }
+            buffer = new(Core.context!, flags | MemFlags.UseHostPtr, this.array);
+        }
+
+        public Memory (nuint size, MemFlags flags = MemFlags.ReadWrite)
+        {
+            array = new(size);
+            buffer = new(Core.context!, flags | MemFlags.UseHostPtr, this.array);
+        }
+
+        public T this[int i]
+        {
+            get => array[i];
+            set => array[i] = value;
+        }
+
+        public Event Map(
+            MapFlags flags,
+            bool blocking = true
+        )
+        {
+            mappedPtr = Core.queue!.EnqueueMapBuffer(buffer, blocking, flags, 0, array.Count, out var ev);
+            return ev;
+        }
+
+        unsafe public Event Unmap(
+            bool blocking = true
+        )
+        {
+            Core.queue!.EnqueueUnmapMemObject(buffer, blocking, mappedPtr, out var ev);
+            return ev;
+        }
+
+        public Event Read(
+            bool blocking = true
+        )
+        {
+            Core.queue!.EnqueueReadBuffer(buffer, blocking, 0, array, out var ev);
+            return ev;
+        }
+
+        public Event Write(
+            bool blocking = true
+        )
+        {
+            Core.queue!.EnqueueWriteBuffer(buffer, blocking, 0, array, out var ev);
+            return ev;
+        }
+
+        public T Dot(Memory<T> rhs)
+        {
+            T res = default;
+            for (int i = 0; i < (int)Count; i++)
+            {
+                res += this[i] * rhs[i];
+            }
+            return res;
+        }
+    }
+}
+
+// обёртка над Silk.NET.OpenCL для удобного использования в csharp
+namespace SparkOCL
+{
+    internal static class CLHandle
+    {
+        static public CL Api = CL.GetApi();
+    }
+
+    class Event
+    {
+        public nint Handle { get; }
+
+        unsafe public ulong GetProfilingInfo(
+            ProfilingInfo info
+        )
+        {
+            var api = CLHandle.Api;
+
+            ulong time;
+            int err = api.GetEventProfilingInfo(Handle, info, 0, &time, null);
+
+            if (err != (int)ErrorCodes.Success)
+            {
+                throw new System.Exception($"Couldn't get profiling info, code: {err}");
+            }
+
+            return time;
+        }
+
+        internal Event(nint h)
+        {
+            Handle = h;
+        }
+
+        ~Event()
+        {
+            var api = CLHandle.Api;
+            api.ReleaseEvent(Handle);
         }
     }
 
@@ -246,11 +485,13 @@ namespace SparkCL
             Kernel kernel,
             NDRange offset,
             NDRange global,
-            NDRange local)
+            NDRange local,
+            out Event @event)
         {
             var api = CLHandle.Api;
 
             int err;
+            nint event_h;
             fixed (nuint *g = global.Sizes)
             fixed (nuint *o = offset.Sizes)
             {
@@ -263,24 +504,27 @@ namespace SparkCL
                     null,
                     0,
                     null,
-                    null);
+                    &event_h);
             }
+            @event = new Event(event_h);
+
             if (err != (int)ErrorCodes.Success)
             {
                 throw new System.Exception($"Couldn't enqueue kernel, code: {err}");
             }
         }
 
-        public unsafe Span<T> EnqueueMapBuffer<T>(
+        public unsafe void* EnqueueMapBuffer<T>(
             Buffer<T> buffer,
             bool blocking,
             MapFlags flags,
             nuint offset,
-            nuint count)
+            nuint count,
+            out Event @event)
         where T : unmanaged
         {
             var api = CLHandle.Api;
-
+            nint event_h;
             var ptr = api.EnqueueMapBuffer(
                 Handle,
                 buffer.Handle,
@@ -290,15 +534,99 @@ namespace SparkCL
                 count * (nuint) sizeof(T),
                 0,
                 null,
-                null,
+                out event_h,
                 out int err);
 
             if (err != (int) ErrorCodes.Success)
             {
                 throw new System.Exception($"Couldn't enqueue buffer map, code: {err}");
             }
+            @event = new Event(event_h);
 
-            return new Span<T>(ptr, (int) count);
+            return ptr;
+        }
+
+        public unsafe void EnqueueReadBuffer<T>(
+            Buffer<T> buffer,
+            bool blocking,
+            nuint offset,
+            Array<T> array,
+            out Event @event)
+        where T : unmanaged
+        {
+            var api = CLHandle.Api;
+
+            nint event_h;
+            int err = api.EnqueueReadBuffer(
+                Handle,
+                buffer.Handle,
+                blocking,
+                offset,
+                array.Count * (nuint) sizeof(T),
+                array.Buf,
+                0,
+                null,
+                out event_h);
+
+            if (err != (int) ErrorCodes.Success)
+            {
+                throw new System.Exception($"Couldn't enqueue buffer read, code: {err}");
+            }
+            @event = new Event(event_h);
+        }
+
+        public unsafe void EnqueueWriteBuffer<T>(
+            Buffer<T> buffer,
+            bool blocking,
+            nuint offset,
+            Array<T> array,
+            out Event @event)
+        where T : unmanaged
+        {
+            var api = CLHandle.Api;
+
+            nint event_h;
+            int err = api.EnqueueWriteBuffer(
+                Handle,
+                buffer.Handle,
+                blocking,
+                offset,
+                array.Count * (nuint) sizeof(T),
+                array.Buf,
+                0,
+                null,
+                out event_h);
+
+            if (err != (int) ErrorCodes.Success)
+            {
+                throw new System.Exception($"Couldn't enqueue buffer read, code: {err}");
+            }
+            @event = new Event(event_h);
+        }
+
+        public unsafe void EnqueueUnmapMemObject<T>(
+            Buffer<T> buffer,
+            bool blocking,
+            void *ptr,
+            out Event @event)
+        where T : unmanaged
+        {
+            var api = CLHandle.Api;
+
+            nint event_h;
+            int err = api.EnqueueUnmapMemObject(
+                Handle,
+                buffer.Handle,
+                ptr,
+                0,
+                null,
+                out event_h);
+
+            if (err != (int) ErrorCodes.Success)
+            {
+                throw new System.Exception($"Couldn't enqueue memory object unmap, code: {err}");
+            }
+            @event = new Event(event_h);
         }
 
         private CommandQueue(nint h)
@@ -315,6 +643,7 @@ namespace SparkCL
     class Kernel
     {
         public nint Handle { get; }
+        uint argCount = 0;
 
         unsafe public Kernel(
             Program program,
@@ -335,9 +664,27 @@ namespace SparkCL
             CLHandle.Api.ReleaseKernel(Handle);
         }
 
+        public uint PushArg<T>(
+            SparkOCL.Buffer<T> buffer)
+        where T: unmanaged
+        {
+            SetArg(argCount, buffer);
+            argCount++;
+            return argCount;
+        }
+
+        public uint PushArg<T>(
+            T arg)
+        where T: unmanaged
+        {
+            SetArg(argCount, arg);
+            argCount++;
+            return argCount;
+        }
+
         unsafe public void SetArg<T>(
             uint arg_index,
-            SparkCL.Buffer<T> buffer)
+            SparkOCL.Buffer<T> buffer)
         where T : unmanaged
         {
             var api = CLHandle.Api;
@@ -346,7 +693,7 @@ namespace SparkCL
             int err = api.SetKernelArg(Handle, arg_index, (nuint)sizeof(nint), ref binding);
             if (err != (int) ErrorCodes.Success)
             {
-                throw new System.Exception($"Failed to set kernel argument, code: {err}");
+                throw new System.Exception($"Failed to set kernel argument (index = {arg_index}), code: {err}");
             }
         }
 
@@ -370,7 +717,7 @@ namespace SparkCL
     {
         public nint Handle { get; }
 
-        unsafe public Buffer(Context context, MemFlags flags, SparkCL.Array<T> array)
+        unsafe public Buffer(Context context, MemFlags flags, SparkOCL.Array<T> array)
         {
             var api = CLHandle.Api;
             int err;
@@ -390,9 +737,21 @@ namespace SparkCL
     unsafe class Array<T>
     where T: unmanaged
     {
-        public void* Buf { get; }
+        public void* Buf { get; internal set; }
         public nuint Count { get; }
         public nuint ElementSize { get; }
+
+        public Array (List<T> array)
+        {
+            ElementSize = (nuint)sizeof(T);
+            Buf = NativeMemory.AlignedAlloc((nuint)array.Count * ElementSize, 4096);
+            this.Count = (nuint)array.Count;
+
+            for (int i = 0; i < array.Count; i++)
+            {
+                this[i] = array[i];
+            }
+        }
 
         public Array (nuint size)
         {
@@ -400,11 +759,6 @@ namespace SparkCL
             Buf = NativeMemory.AlignedAlloc(size * ElementSize, 4096);
             this.Count = size;
         }
-
-        // public Span<T> GetSpan ()
-        // {
-        //     return new Span<T>(buf, (int)size);
-        // }
 
         public T this[int i]
         {
