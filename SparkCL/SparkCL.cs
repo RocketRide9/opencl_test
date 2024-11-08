@@ -75,6 +75,17 @@ namespace SparkCL
     }
     */
 
+    public static class EventExt
+    {
+        public static ulong GetElapsed(this SparkOCL.Event @event)
+        {
+            var s = @event.GetProfilingInfo(ProfilingInfo.Start);
+            var c = @event.GetProfilingInfo(ProfilingInfo.End);
+
+            return c - s;
+        }
+    }
+
     class Program
     {
         SparkOCL.Program program;
@@ -129,6 +140,13 @@ namespace SparkCL
         where T: unmanaged, INumber<T>
         {
             kernel.SetArg(idx, mem.buffer);
+        }
+
+        public void SetSize(
+            uint idx,
+            nuint sz)
+        {
+            kernel.SetSize(idx, sz);
         }
 
         internal Kernel(SparkOCL.Kernel kernel)
@@ -192,11 +210,9 @@ namespace SparkCL
             return ev;
         }
 
-        unsafe public Event Unmap(
-            bool blocking = true
-        )
+        unsafe public Event Unmap()
         {
-            Core.queue!.EnqueueUnmapMemObject(buffer, blocking, mappedPtr, out var ev);
+            Core.queue!.EnqueueUnmapMemObject(buffer, mappedPtr, out var ev);
             return ev;
         }
 
@@ -236,7 +252,7 @@ namespace SparkOCL
         static public CL Api = CL.GetApi();
     }
 
-    class Event
+    public class Event
     {
         public nint Handle { get; }
 
@@ -247,7 +263,7 @@ namespace SparkOCL
             var api = CLHandle.Api;
 
             ulong time;
-            int err = api.GetEventProfilingInfo(Handle, info, 0, &time, null);
+            int err = api.GetEventProfilingInfo(Handle, info, 8, &time, null);
 
             if (err != (int)ErrorCodes.Success)
             {
@@ -301,12 +317,12 @@ namespace SparkOCL
             // Next, create an OpenCL context on the platform.  Attempt to
             // create a GPU-based context, and if that fails, try to create
             // a CPU-based context.
-            nint[] contextProperties = new nint[]
-            {
+            nint[] contextProperties =
+            [
                 (nint)ContextProperties.Platform,
                 platforms[0].Handle,
                 0
-            };
+            ];
 
             fixed (nint* p = contextProperties)
             {
@@ -352,8 +368,10 @@ namespace SparkOCL
                 throw new System.Exception($"Couldn't get platform ids, code: {err}");
             }
 
-            platforms = new();
-            platforms.Capacity = (int) n;
+            platforms = new()
+            {
+                Capacity = (int)n
+            };
             for (int i = 0; i < n; i++)
             {
                 var p = new Platform(ids[i]);
@@ -463,7 +481,14 @@ namespace SparkOCL
             var api = CLHandle.Api;
 
             int err;
-            Handle = api.CreateCommandQueue(context.Handle, device.Handle, CommandQueueProperties.None, &err);
+            QueueProperties[] props = [
+                (QueueProperties)CommandQueueInfo.Properties, (QueueProperties) CommandQueueProperties.ProfilingEnable,
+                0
+            ];
+            fixed (QueueProperties *p = props)
+            {
+                Handle = api.CreateCommandQueueWithProperties(context.Handle, device.Handle, p, &err);
+            }
 
             if (err != (int)ErrorCodes.Success)
             {
@@ -606,7 +631,6 @@ namespace SparkOCL
 
         public unsafe void EnqueueUnmapMemObject<T>(
             Buffer<T> buffer,
-            bool blocking,
             void *ptr,
             out Event @event)
         where T : unmanaged
@@ -706,6 +730,19 @@ namespace SparkOCL
 
             int err = api.SetKernelArg(Handle, arg_index, (nuint)sizeof(T), ref arg);
             if (err != (int) ErrorCodes.Success)
+            {
+                throw new System.Exception($"Failed to set kernel argument, code: {err}, arg size: {(nuint)sizeof(T)}");
+            }
+        }
+
+        unsafe public void SetSize(
+            uint arg_index,
+            nuint sz)
+        {
+            var api = CLHandle.Api;
+
+            int err = api.SetKernelArg(Handle, arg_index, (nuint)sizeof(float) * sz, null);
+            if (err != (int)ErrorCodes.Success)
             {
                 throw new System.Exception($"Failed to set kernel argument, code: {err}");
             }
