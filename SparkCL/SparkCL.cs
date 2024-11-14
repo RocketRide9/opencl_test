@@ -764,7 +764,7 @@ namespace SparkOCL
         {
             var api = CLHandle.Api;
 
-            int err = api.SetKernelArg(Handle, arg_index, (nuint)sizeof(float) * sz, null);
+            int err = api.SetKernelArg(Handle, arg_index, (nuint)sizeof(double) * sz, null);
             if (err != (int)ErrorCodes.Success)
             {
                 throw new System.Exception($"Failed to set kernel argument, code: {err}");

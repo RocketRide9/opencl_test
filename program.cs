@@ -10,7 +10,7 @@ using System.IO;
 using System.Numerics;
 using System.Threading.Tasks;
 using static SparkCL.EventExt;
-using Real = System.Single;
+using Real = System.Double;
 // using SparkOCL;
 // using SparkCL;
 
@@ -19,7 +19,8 @@ namespace HelloWorld
     internal class Program
     {
         const int MAX_ITER = (int)1e+3;
-        const Real EPS = 1e-7F;
+        const Real EPS = 1e-13F;
+        const bool HOST_PARALLEL = true;
 
         static void Main(string[] args)
         {
@@ -88,7 +89,7 @@ namespace HelloWorld
             // var f32 = new SparkCL.Memory<Real>(1);
 
             var sw_gpu = new Stopwatch();
-            var sw_host = new Stopwatch();
+            var sw_total = new Stopwatch();
             sw_gpu.Start();
 
             var solvers = new SparkCL.Program("Solvers.cl");
@@ -162,9 +163,9 @@ namespace HelloWorld
             int iter = 0;
             Real rr = 0;
 
-            sw_host.Start();
+            sw_total.Start();
             Real pp = r.Dot(r); // r_hat * r
-            sw_host.Stop();
+            sw_total.Stop();
 
             for (; iter < MAX_ITER; iter++)
             {
@@ -173,7 +174,7 @@ namespace HelloWorld
                 kernMul.Execute();
                 nu.Read();
             
-                sw_host.Start();
+                sw_total.Start();
                 Real rnu = r_hat.Dot(nu);
                 Real alpha = pp / rnu;
                 if (Real.IsNaN(alpha))
@@ -181,7 +182,7 @@ namespace HelloWorld
                     Console.WriteLine("альфа говно");
                     break;
                 }
-                sw_host.Stop();
+                sw_total.Stop();
 
                 x.Write();
                 p.Write();
@@ -193,31 +194,32 @@ namespace HelloWorld
                 // print(s, 5);
                 // return;
 
-                sw_host.Start();
+                sw_total.Start();
                 Real ss = s.Dot(s);
                 if (ss < EPS)
                 {
+                    x = h;
                     break;
                 }
-                sw_host.Stop();
+                sw_total.Stop();
                 
                 kernMul.SetArg(4, s);
                 kernMul.SetArg(5, t);
                 kernMul.Execute();
                 t.Read();
 
-                sw_host.Start();
+                sw_total.Start();
                 Real ts = t.Dot(s);
                 Real tt = t.Dot(t);
                 Real w = ts / tt;
-                sw_host.Stop();
+                sw_total.Stop();
 
                 kernXR.SetArg(5, w);
                 kernXR.Execute();
                 r.Read();
                 x.Read();
 
-                sw_host.Start();
+                sw_total.Start();
                 rr = r.Dot(r);
                 if (rr < EPS)
                 {
@@ -226,7 +228,7 @@ namespace HelloWorld
 
                 Real pp1 = r_hat.Dot(r);
                 Real beta = (pp1 / pp) * (alpha / w);
-                sw_host.Stop();
+                sw_total.Stop();
 
                 kernP.SetArg(3, w);
                 kernP.SetArg(4, beta);
@@ -250,13 +252,13 @@ namespace HelloWorld
             Console.WriteLine($"pp = {pp}");
             Console.WriteLine($"max err. = {max_err}");
             ulong overhead = (ulong)sw_gpu.ElapsedMilliseconds
-                - (SparkCL.Core.IOTime + SparkCL.Core.KernTime) / 1_000_000 - (ulong)sw_host.ElapsedMilliseconds;
+                - (SparkCL.Core.IOTime + SparkCL.Core.KernTime) / 1_000_000 - (ulong)sw_total.ElapsedMilliseconds;
             Console.WriteLine($"Итераций: {iter}");
             Console.WriteLine($"BiCGSTAB с OpenCL: {sw_gpu.ElapsedMilliseconds}мс");
             Console.WriteLine($"Время на операции:");
             Console.WriteLine($"IO: {SparkCL.Core.IOTime/1_000}мкс");
             Console.WriteLine($"Код OpenCL: {SparkCL.Core.KernTime/1_000_000}мс");
-            Console.WriteLine($"Вычисления на хосте: {sw_host.ElapsedMilliseconds}мс");
+            Console.WriteLine($"Вычисления на хосте: {sw_total.ElapsedMilliseconds}мс");
             Console.WriteLine($"Накладные расходы: {overhead}мс");
         }
 
@@ -286,12 +288,13 @@ namespace HelloWorld
             // BiCGSTAB
             
             MSRMul(mat, aptr, jptr, x.Count, x, ref t);
-            for (int i = 0; i < x.Count; i++)
+            MyFor(0, x.Count, i =>
             {
                 r[i] = f[i] - t[i];
                 r_hat[i] = r[i];
                 p[i] = r[i];
-            }
+
+            });
 
             
             int iter = 0;
@@ -311,17 +314,18 @@ namespace HelloWorld
                     break;
                 }
 
-                for (int i = 0; i < x.Count; i++)
+                MyFor(0, x.Count, i =>
                 {
                     h[i] = x[i] + alpha * p[i];
                     s[i] = r[i] - alpha * nu[i];
-                }
+                });
                 // print(s, 5);
                 // return;
 
                 Real ss = Dot(s, s);
                 if (ss < EPS)
                 {
+                    x = h;
                     break;
                 }
                 
@@ -331,11 +335,11 @@ namespace HelloWorld
                 Real tt = Dot(t, t);
                 Real w = ts / tt;
 
-                for (int i = 0; i < x.Count; i++)
+                MyFor(0, x.Count, i =>
                 {
                     x[i] = h[i] + w * s[i];
                     r[i] = s[i] - w * t[i];
-                }
+                });
 
                 rr = Dot(r, r);
                 if (rr < EPS)
@@ -346,11 +350,11 @@ namespace HelloWorld
                 Real pp1 = Dot(r, r_hat);
                 Real beta = (pp1 / pp) * (alpha / w);
 
-                for (int i = 0; i < x.Count; i++)
+                MyFor(0, x.Count, i =>
                 {
                     p[i] = r[i] + beta * (p[i] - w*nu[i]);
 
-                }
+                });
                 pp = pp1;
             }
             sw_host.Stop();
@@ -387,6 +391,22 @@ namespace HelloWorld
                 Console.WriteLine($"{mem[(int)i]}");
             }
             Console.WriteLine("...");
+        }
+
+        static void MyFor(int i0, int i1, Action<int> iteration)
+        {
+            if (HOST_PARALLEL)
+            {
+                Parallel.For(i0, i1, (i) =>
+                {
+                    iteration(i);
+                });
+            } else {
+                for (int i = i0; i < i1; i++)
+                {
+                    iteration(i);
+                }
+            }
         }
         
         static void LOS()
@@ -635,7 +655,8 @@ namespace HelloWorld
             });
             */
 
-            for (int i = 0; i < n; i++)
+            var binding = res;
+            MyFor(0, n, i =>
             {
                 int start = aptr[i];
                 int stop = aptr[i + 1];
@@ -644,8 +665,8 @@ namespace HelloWorld
                 {
                     dot += mat[a] * v[jptr[a - n]];
                 }
-                res[i] = dot;
-            }
+                binding[i] = dot;
+            });
 
             // res = temp;
         }

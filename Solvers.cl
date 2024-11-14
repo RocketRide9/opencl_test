@@ -1,5 +1,5 @@
-#define real float
-#define real4 float4
+#define real double
+#define real4 double4
 
 kernel void MSRMul(
     global const real *mat,
