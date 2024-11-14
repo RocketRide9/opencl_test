@@ -53,7 +53,7 @@ float MSRMulSingle
     global const real *v
 )
 {
-    size_t row = get_global_id(0);
+    uint row = get_global_id(0);
 
     int start = aptr[row];
     int stop = aptr[row + 1];
@@ -116,7 +116,7 @@ kernel void LOS_prepare1
     global real *r
 )
 {
-    size_t idx = get_global_id(0);
+    uint idx = get_global_id(0);
 
     r[idx] = MSRMulSingle(mat, aptr, jptr, n, x); // r = Ax
     r[idx] = f[idx] - r[idx]; // r = f - Ax
@@ -136,7 +136,7 @@ kernel void LOS_prepare2
     global real *p
 )
 {
-    size_t idx = get_global_id(0);
+    uint idx = get_global_id(0);
 
     p[idx] = MSRMulSingle(mat, aptr, jptr, n, r); // p = Ar
 }
@@ -150,7 +150,7 @@ kernel void LOS_xr
     global float *r
 )
 {
-    size_t i = get_global_id(0);
+    uint i = get_global_id(0);
 
     x[i] += (alpha * f[i]);
     r[i] -= (alpha * p[i]);
@@ -165,76 +165,77 @@ kernel void LOS_fp
     global float *p
 )
 {
-    size_t i = get_global_id(0);
+    uint i = get_global_id(0);
 
-    // f[i] = mad(beta, f[i], r[i]);
-    // p[i] = mad(beta, p[i], ar[i]);
     f[i] = r[i] + beta * f[i];
     p[i] = ar[i] + beta * p[i];
 }
 
-/*
-kernel void LOS
+kernel void BiCGSTAB_prepare1
 (
     // матрица
     global const real *mat,
     global const int *aptr,
     global const int *jptr,
     const int n,
-    // правая часть, массив будет использован для хранения z
-    global real *f,
-    // передаётся нач. приближ., записывается результат
-    global real *res,
     // вспомогательные массивы
     global real *r,
+    global real *r_hat,
     global real *p,
-    global real *ar
+    global const real *f,
+    global const real *x
 )
 {
-    const float EPS = 1e-5;
-    const int MAX_ITER = 1e+5;
-
-    size_t idx = get_global_id(0);
-
-    r[idx] = MSRMulSingle(mat, aptr, jptr, n, res); // r = Ax
-    r[idx] = f[idx] - r[idx]; // r = f - Ax
-
-    global real *z = f; // переименовать f в z
-    z[idx] = r[idx]; // z = r.clone()
-
-    barrier(CLK_LOCAL_MEM_FENCE);
-    p[idx] = MSRMulSingle(mat, aptr, jptr, n, r); // p = Ar
-
-    int iter = 0;
-    // r должен быть посчитан полностью, перед вычислением произведения
-    barrier(CLK_LOCAL_MEM_FENCE);
-    real rr = dot(r, r, n);
-    for (;iter < MAX_ITER && fabs(rr) > EPS; iter++) {
-        barrier(CLK_LOCAL_MEM_FENCE);
-        real pp = dot(p, p, n);
-        barrier(CLK_LOCAL_MEM_FENCE);
-        real alpha = dot(p, r, n) / pp;
-
-        res[idx] += alpha*z[idx];
-        r[idx]   -= alpha*p[idx];
-
-        barrier(CLK_LOCAL_MEM_FENCE);
-        ar[idx] = MSRMulSingle(mat, aptr, jptr, n, r); // ar = Ar
-        barrier(CLK_LOCAL_MEM_FENCE);
-        real par = dot(p, ar, n);
-        real beta = -(par) / pp;
-
-        z[idx] = r[idx] + beta*z[idx]; // calc z
-        p[idx] = ar[idx] + beta*p[idx]; // calc p
-
-        rr -= alpha*alpha*pp;
-    }
-    if (idx == 0) {
-        if (fabs(rr) > EPS)
-        {
-            printf("Точность не достигнута\n");
-        }
-        printf("Кол-во итераций: %d\n", iter);
-    }
+    uint i = get_global_id(0);
+    
+    r[i] = f[i] - MSRMulSingle(mat, aptr, jptr, n, x);
+    r_hat[i] = r[i];
+    p[i] = r[i];
 }
-*/
+
+kernel void BiCGSTAB_hs
+(
+    global real *h,
+    global real *s,
+    global const real *p,
+    global const real *nu,
+    global const real *x,
+    global const real *r,
+    const real alpha
+)
+{
+    uint i = get_global_id(0);
+    
+    h[i] = x[i] + alpha * p[i];
+    s[i] = r[i] - alpha * nu[i];
+}
+
+kernel void BiCGSTAB_xr
+(
+    global real *x,
+    global real *r,
+    global const real *h,
+    global const real *s,
+    global const real *t,
+    const real w
+)
+{
+    uint i = get_global_id(0);
+    
+    x[i] = h[i] + w * s[i];
+    r[i] = s[i] - w * t[i];
+}
+
+kernel void BiCGSTAB_p
+(
+    global real *p,
+    global const real *r,
+    global const real *nu,
+    const real w,
+    const real beta
+)
+{
+    uint i = get_global_id(0);
+    
+    p[i] = r[i] + beta * (p[i] - w*nu[i]);
+}

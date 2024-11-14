@@ -24,8 +24,11 @@ namespace HelloWorld
         static void Main(string[] args)
         {
             // DOT();
-            //LOS_cpu();
-            LOS();
+            // LOS_cpu();
+            // LOS();
+            BiCGSTAB_cpu();
+            Console.WriteLine();
+            BiCGSTAB();
         }
 
         static void DOT()
@@ -42,17 +45,18 @@ namespace HelloWorld
             d1.Write();
             d2.Write();
             var solvers = new SparkCL.Program("Solvers.cl");
-            var dot = solvers.GetKernel("dot_kernel");
+            var dot = solvers.GetKernel(
+                "dot_kernel",
+                globalWork: new(16),
+                localWork:  new(16)
+            );
                 dot.SetArg(2, d1.Count);
                 dot.SetArg(3, f32);
                 dot.SetArg(4, 16);
 
             dot.SetArg(0, d1);
             dot.SetArg(1, d2);
-            dot.Execute(
-                globalWork: new(16),
-                localWork:  new(16)
-            );
+            dot.Execute();
             f32.Read();
 
             sw_gpu.Stop();
@@ -66,17 +70,22 @@ namespace HelloWorld
             SparkCL.Core.Init();
 
             // на Intel флаги не повлияли на производительность
-            var mat = new SparkCL.Memory<Real>(File.OpenText("./mat"), MemFlags.HostNoAccess | MemFlags.ReadOnly);
-            var f = new SparkCL.Memory<Real>(File.OpenText("./f"), MemFlags.HostNoAccess);
-            var aptr = new SparkCL.Memory<int>(File.OpenText("./aptr"), MemFlags.HostNoAccess | MemFlags.ReadOnly);
-            var jptr = new SparkCL.Memory<int>(File.OpenText("./jptr"), MemFlags.HostNoAccess | MemFlags.ReadOnly);
-            var x = new SparkCL.Memory<Real>(File.OpenText("./x"), MemFlags.HostNoAccess);
+            var mat =   new SparkCL.Memory<Real>(File.OpenText("./mat"));
+            var f =     new SparkCL.Memory<Real>(File.OpenText("./f"));
+            var aptr =  new SparkCL.Memory<int> (File.OpenText("./aptr"));
+            var jptr =  new SparkCL.Memory<int> (File.OpenText("./jptr"));
+            var x =     new SparkCL.Memory<Real>(File.OpenText("./x"));
+            var ans =   LoadArray<Real>         (File.OpenText("./ans"));
 
-            var r  = new SparkCL.Memory<Real>(x.Count, MemFlags.HostReadOnly);
-            var p  = new SparkCL.Memory<Real>(x.Count, MemFlags.HostReadOnly);
-            var ar = new SparkCL.Memory<Real>(x.Count, MemFlags.HostReadOnly);
+            var r =     new SparkCL.Memory<Real>(x.Count);
+            var r_hat = new SparkCL.Memory<Real>(x.Count);
+            var p =     new SparkCL.Memory<Real>(x.Count);
+            var nu =    new SparkCL.Memory<Real>(x.Count);
+            var h =     new SparkCL.Memory<Real>(x.Count);
+            var s =     new SparkCL.Memory<Real>(x.Count);
+            var t =     new SparkCL.Memory<Real>(x.Count);
 
-            var f32 = new SparkCL.Memory<Real>(1);
+            // var f32 = new SparkCL.Memory<Real>(1);
 
             var sw_gpu = new Stopwatch();
             var sw_host = new Stopwatch();
@@ -84,146 +93,153 @@ namespace HelloWorld
 
             var solvers = new SparkCL.Program("Solvers.cl");
 
-            var losPrepare1 = solvers.GetKernel("LOS_prepare1");
-                losPrepare1.PushArg(mat);
-                losPrepare1.PushArg(aptr);
-                losPrepare1.PushArg(jptr);
-                losPrepare1.PushArg((uint)x.Count);
-                losPrepare1.PushArg(f);
-                losPrepare1.PushArg(x);
-                losPrepare1.PushArg(r);
-
-            var losPrepare2 = solvers.GetKernel("LOS_prepare2");
-                losPrepare2.PushArg(mat);
-                losPrepare2.PushArg(aptr);
-                losPrepare2.PushArg(jptr);
-                losPrepare2.PushArg((uint)x.Count);
-                losPrepare2.PushArg(r);
-                losPrepare2.PushArg(p);
-
-            var arMul = solvers.GetKernel("MSRMul");
-                arMul.PushArg(mat);
-                arMul.PushArg(aptr);
-                arMul.PushArg(jptr);
-                arMul.PushArg((uint)x.Count);
-                arMul.PushArg(r);
-                arMul.PushArg(ar);
-
-            var losXr = solvers.GetKernel("LOS_xr");
-                losXr.PushArg(f);
-                losXr.PushArg(p);
-                losXr.PushArg(0); // альфа
-                losXr.PushArg(x);
-                losXr.PushArg(r);
-
-            var losFp = solvers.GetKernel("LOS_fp");
-                losFp.PushArg(r);
-                losFp.PushArg(ar);
-                losFp.PushArg(0); // бета
-                losFp.PushArg(f);
-                losFp.PushArg(p);
-
-            var dot = solvers.GetKernel("dot_kernel");
-                dot.SetArg(2, (uint)x.Count);
-                dot.SetArg(3, f32);
-                dot.SetSize(4, (uint)32);
-
-            ulong ioTime = 0;
-            ulong kernelTime = 0;
-            // LOS
-            Real bb = f.Dot(f);
-            
-            var evKern = losPrepare1.Execute(
+            var prepare1 = solvers.GetKernel(
+                "BiCGSTAB_prepare1",
                 globalWork: new(x.Count),
-                localWork:  new(16));
-            var evIO = r.Read();
-            ioTime += evIO.GetElapsed();
-            kernelTime += evKern.GetElapsed();
+                localWork:  new(32)
+            );
+                prepare1.PushArg(mat);
+                prepare1.PushArg(aptr);
+                prepare1.PushArg(jptr);
+                prepare1.PushArg((uint)x.Count);
+                prepare1.PushArg(r);
+                prepare1.PushArg(r_hat);
+                prepare1.PushArg(p);
+                prepare1.PushArg(f);
+                prepare1.PushArg(x);
 
-            evKern = losPrepare2.Execute(
+            var kernMul = solvers.GetKernel(
+                "MSRMul",
                 globalWork: new(x.Count),
-                localWork:  new(8));
-            evIO = p.Read();
-            ioTime += evIO.GetElapsed();
-            kernelTime += evKern.GetElapsed();
+                localWork:  new(32)
+            );
+                kernMul.PushArg(mat);
+                kernMul.PushArg(aptr);
+                kernMul.PushArg(jptr);
+                kernMul.PushArg((uint)x.Count);
+                kernMul.PushArg(p);
+                kernMul.PushArg(nu);
+
+            var kernHS = solvers.GetKernel(
+                "BiCGSTAB_hs",
+                globalWork: new(x.Count),
+                localWork:  new(32)
+            );
+                kernHS.PushArg(h);
+                kernHS.PushArg(s);
+                kernHS.PushArg(p);
+                kernHS.PushArg(nu);
+                kernHS.PushArg(x);
+                kernHS.PushArg(r);
+                
+            var kernXR = solvers.GetKernel(
+                "BiCGSTAB_xr",
+                globalWork: new(x.Count),
+                localWork:  new(32)
+            );
+                kernXR.PushArg(x);
+                kernXR.PushArg(r);
+                kernXR.PushArg(h);
+                kernXR.PushArg(s);
+                kernXR.PushArg(t);
+
+            var kernP = solvers.GetKernel(
+                "BiCGSTAB_p",
+                globalWork: new(x.Count),
+                localWork:  new(32)
+            );
+                kernP.PushArg(p);
+                kernP.PushArg(r);
+                kernP.PushArg(nu);
+                
+            // BiCGSTAB
+            prepare1.Execute();
+            r.Read();
+            r_hat.Read();
+            p.Read();
 
 
             int iter = 0;
+            Real rr = 0;
 
             sw_host.Start();
-            Real rr = r.Dot(r);
+            Real pp = r.Dot(r); // r_hat * r
             sw_host.Stop();
 
-            Real pp = 1;
-            Real pp0;
-            for (; iter < MAX_ITER && Math.Abs(rr/bb) > EPS; iter++)
+            for (; iter < MAX_ITER; iter++)
             {
+                kernMul.SetArg(4, p);
+                kernMul.SetArg(5, nu);
+                kernMul.Execute();
+                nu.Read();
+            
                 sw_host.Start();
-                pp0 = pp;
-                pp = p.Dot(p);
-                Real alpha = (p.Dot(r)) / pp;
+                Real rnu = r_hat.Dot(nu);
+                Real alpha = pp / rnu;
                 if (Real.IsNaN(alpha))
                 {
+                    Console.WriteLine("альфа говно");
                     break;
                 }
                 sw_host.Stop();
-                rr -= alpha * alpha * pp0;
-                if (rr < 0 && false)
+
+                x.Write();
+                p.Write();
+                r.Write();
+                kernHS.SetArg(6, alpha);
+                kernHS.Execute();
+                s.Read();
+                h.Read();
+                // print(s, 5);
+                // return;
+
+                sw_host.Start();
+                Real ss = s.Dot(s);
+                if (ss < EPS)
+                {
+                    break;
+                }
+                sw_host.Stop();
+                
+                kernMul.SetArg(4, s);
+                kernMul.SetArg(5, t);
+                kernMul.Execute();
+                t.Read();
+
+                sw_host.Start();
+                Real ts = t.Dot(s);
+                Real tt = t.Dot(t);
+                Real w = ts / tt;
+                sw_host.Stop();
+
+                kernXR.SetArg(5, w);
+                kernXR.Execute();
+                r.Read();
+                x.Read();
+
+                sw_host.Start();
+                rr = r.Dot(r);
+                if (rr < EPS)
                 {
                     break;
                 }
 
-                losXr.SetArg(2, alpha);
-                evKern = losXr.Execute(
-                    globalWork: new(x.Count),
-                    localWork:  new(16)
-                );
-                evIO = r.Read();
-                kernelTime += evKern.GetElapsed();
-                ioTime += evIO.GetElapsed();
-
-                evKern = arMul.Execute(
-                    globalWork: new(x.Count),
-                    localWork:  new(16)
-                );
-                evIO = ar.Read();
-                kernelTime += evKern.GetElapsed();
-                ioTime += evIO.GetElapsed();
-
-                /*
-                    dot.SetArg(0, p);
-                    dot.SetArg(1, ar);
-                    evKern = dot.Execute(
-                        globalWork: new(32),
-                        localWork:  new(32)
-                    );
-                    evIO = f32.Read();
-                    ioTime += evIO.GetElapsed();
-                    kernelTime += evKern.GetElapsed();
-                */
-                
-                sw_host.Start();
-                Real par = p.Dot(ar);
-                // Real par = f32[0];
-                Real beta = -par / pp;
+                Real pp1 = r_hat.Dot(r);
+                Real beta = (pp1 / pp) * (alpha / w);
                 sw_host.Stop();
 
-                losFp.SetArg(2, beta);
-                evKern = losFp.Execute(
-                    globalWork: new(x.Count),
-                    localWork:  new(16)
-                );
-                evIO = p.Read();
-                kernelTime += evKern.GetElapsed();
-                ioTime += evIO.GetElapsed();
-
+                kernP.SetArg(3, w);
+                kernP.SetArg(4, beta);
+                kernP.Execute();
+                p.Read();
+                pp = pp1;
             }
             sw_gpu.Stop();
 
-            Real max_err = Math.Abs(x[0] - 1);
+            Real max_err = Math.Abs(x[0] - ans[0]);
             for (int i = 0; i < (int)x.Count; i++)
             {
-                var err = x[0] - i - 1;
+                var err = Math.Abs(x[i] - ans[i]);
                 if (err > max_err)
                 {
                     max_err = err;
@@ -234,16 +250,145 @@ namespace HelloWorld
             Console.WriteLine($"pp = {pp}");
             Console.WriteLine($"max err. = {max_err}");
             ulong overhead = (ulong)sw_gpu.ElapsedMilliseconds
-                - (ioTime + kernelTime) / 1_000_000 - (ulong)sw_host.ElapsedMilliseconds;
+                - (SparkCL.Core.IOTime + SparkCL.Core.KernTime) / 1_000_000 - (ulong)sw_host.ElapsedMilliseconds;
             Console.WriteLine($"Итераций: {iter}");
-            Console.WriteLine($"ЛОС с OpenCL: {sw_gpu.ElapsedMilliseconds}мс");
+            Console.WriteLine($"BiCGSTAB с OpenCL: {sw_gpu.ElapsedMilliseconds}мс");
             Console.WriteLine($"Время на операции:");
-            Console.WriteLine($"IO: {ioTime/1_000}мкс");
-            Console.WriteLine($"Код OpenCL: {kernelTime/1_000_000}мс");
+            Console.WriteLine($"IO: {SparkCL.Core.IOTime/1_000}мкс");
+            Console.WriteLine($"Код OpenCL: {SparkCL.Core.KernTime/1_000_000}мс");
             Console.WriteLine($"Вычисления на хосте: {sw_host.ElapsedMilliseconds}мс");
             Console.WriteLine($"Накладные расходы: {overhead}мс");
         }
 
+        static void BiCGSTAB_cpu()
+        {
+            // на Intel флаги не повлияли на производительность
+            var mat =   LoadArray<Real>(File.OpenText("./mat"));
+            var f =     LoadArray<Real>(File.OpenText("./f"));
+            var aptr =  LoadArray<int> (File.OpenText("./aptr"));
+            var jptr =  LoadArray<int> (File.OpenText("./jptr"));
+            var x =     LoadArray<Real>(File.OpenText("./x"));
+            var ans =   LoadArray<Real>(File.OpenText("./ans"));
+
+            var r =     new List<Real>(new Real[x.Count]);
+            var r_hat = new List<Real>(new Real[x.Count]);
+            var p =     new List<Real>(new Real[x.Count]);
+            var nu =    new List<Real>(new Real[x.Count]);
+            var h =     new List<Real>(new Real[x.Count]);
+            var s =     new List<Real>(new Real[x.Count]);
+            var t =     new List<Real>(new Real[x.Count]);
+
+            // var f32 = new SparkCL.Memory<Real>(1);
+
+            var sw_host = new Stopwatch();
+            sw_host.Start();
+
+            // BiCGSTAB
+            
+            MSRMul(mat, aptr, jptr, x.Count, x, ref t);
+            for (int i = 0; i < x.Count; i++)
+            {
+                r[i] = f[i] - t[i];
+                r_hat[i] = r[i];
+                p[i] = r[i];
+            }
+
+            
+            int iter = 0;
+            Real rr = 0;
+
+            Real pp = Dot(r, r); // r_hat * r
+
+            for (; iter < MAX_ITER; iter++)
+            {
+                MSRMul(mat, aptr, jptr, x.Count, p, ref nu);
+
+                Real rnu = Dot(nu, r_hat);
+                Real alpha = pp / rnu;
+                if (Real.IsNaN(alpha))
+                {
+                    Console.WriteLine("альфа говно");
+                    break;
+                }
+
+                for (int i = 0; i < x.Count; i++)
+                {
+                    h[i] = x[i] + alpha * p[i];
+                    s[i] = r[i] - alpha * nu[i];
+                }
+                // print(s, 5);
+                // return;
+
+                Real ss = Dot(s, s);
+                if (ss < EPS)
+                {
+                    break;
+                }
+                
+                MSRMul(mat, aptr, jptr, x.Count, s, ref t);
+
+                Real ts = Dot(s, t);
+                Real tt = Dot(t, t);
+                Real w = ts / tt;
+
+                for (int i = 0; i < x.Count; i++)
+                {
+                    x[i] = h[i] + w * s[i];
+                    r[i] = s[i] - w * t[i];
+                }
+
+                rr = Dot(r, r);
+                if (rr < EPS)
+                {
+                    break;
+                }
+
+                Real pp1 = Dot(r, r_hat);
+                Real beta = (pp1 / pp) * (alpha / w);
+
+                for (int i = 0; i < x.Count; i++)
+                {
+                    p[i] = r[i] + beta * (p[i] - w*nu[i]);
+
+                }
+                pp = pp1;
+            }
+            sw_host.Stop();
+
+            Real max_err = Math.Abs(x[0] - ans[0]);
+            for (int i = 0; i < (int)x.Count; i++)
+            {
+                var err = Math.Abs(x[i] - ans[i]);
+                if (err > max_err)
+                {
+                    max_err = err;
+                }
+            }
+
+            Console.WriteLine($"rr = {rr}");
+            Console.WriteLine($"pp = {pp}");
+            Console.WriteLine($"max err. = {max_err}");
+            Console.WriteLine($"Итераций: {iter}");
+            Console.WriteLine($"Вычисления на хосте: {sw_host.ElapsedMilliseconds}мс");
+        }
+        
+        static void print(SparkCL.Memory<Real> mem, uint first)
+        {
+            for (uint i = 0; i < mem.Count && i < first; i++)
+            {
+                Console.WriteLine($"{mem[(int)i]}");
+            }
+            Console.WriteLine("...");
+        }
+        static void print(List<Real> mem, uint first)
+        {
+            for (uint i = 0; i < mem.Count && i < first; i++)
+            {
+                Console.WriteLine($"{mem[(int)i]}");
+            }
+            Console.WriteLine("...");
+        }
+        
         static void LOS()
         {
             SparkCL.Core.Init();
@@ -267,7 +412,11 @@ namespace HelloWorld
 
             var solvers = new SparkCL.Program("Solvers.cl");
 
-            var losPrepare1 = solvers.GetKernel("LOS_prepare1");
+            var losPrepare1 = solvers.GetKernel(
+                "LOS_prepare1",
+                globalWork: new(x.Count),
+                localWork:  new(32)
+            );
                 losPrepare1.PushArg(mat);
                 losPrepare1.PushArg(aptr);
                 losPrepare1.PushArg(jptr);
@@ -276,7 +425,11 @@ namespace HelloWorld
                 losPrepare1.PushArg(x);
                 losPrepare1.PushArg(r);
 
-            var losPrepare2 = solvers.GetKernel("LOS_prepare2");
+            var losPrepare2 = solvers.GetKernel(
+                "LOS_prepare2",
+                globalWork: new(x.Count),
+                localWork:  new(32)
+            );
                 losPrepare2.PushArg(mat);
                 losPrepare2.PushArg(aptr);
                 losPrepare2.PushArg(jptr);
@@ -284,7 +437,11 @@ namespace HelloWorld
                 losPrepare2.PushArg(r);
                 losPrepare2.PushArg(p);
 
-            var arMul = solvers.GetKernel("MSRMul");
+            var arMul = solvers.GetKernel(
+                "MSRMul",
+                globalWork: new(x.Count),
+                localWork:  new(32)
+            );
                 arMul.PushArg(mat);
                 arMul.PushArg(aptr);
                 arMul.PushArg(jptr);
@@ -292,21 +449,33 @@ namespace HelloWorld
                 arMul.PushArg(r);
                 arMul.PushArg(ar);
 
-            var losXr = solvers.GetKernel("LOS_xr");
+            var losXr = solvers.GetKernel(
+                "LOS_xr",
+                globalWork: new(x.Count),
+                localWork:  new(32)
+            );
                 losXr.PushArg(f);
                 losXr.PushArg(p);
                 losXr.PushArg(0); // альфа
                 losXr.PushArg(x);
                 losXr.PushArg(r);
 
-            var losFp = solvers.GetKernel("LOS_fp");
+            var losFp = solvers.GetKernel(
+                "LOS_fp",
+                globalWork: new(x.Count),
+                localWork:  new(32)
+            );
                 losFp.PushArg(r);
                 losFp.PushArg(ar);
                 losFp.PushArg(0); // бета
                 losFp.PushArg(f);
                 losFp.PushArg(p);
 
-            var dot = solvers.GetKernel("dot_kernel");
+            var dot = solvers.GetKernel(
+                "dot_kernel",
+                globalWork: new(x.Count),
+                localWork:  new(32)
+            );
                 dot.SetArg(2, (uint)x.Count);
                 dot.SetArg(3, f32);
                 dot.SetSize(4, (uint)32);
@@ -316,16 +485,12 @@ namespace HelloWorld
             // LOS
             Real bb = f.Dot(f);
             
-            var evKern = losPrepare1.Execute(
-                globalWork: new(x.Count),
-                localWork:  new(16));
+            var evKern = losPrepare1.Execute();
             var evIO = r.Read();
             ioTime += evIO.GetElapsed();
             kernelTime += evKern.GetElapsed();
 
-            evKern = losPrepare2.Execute(
-                globalWork: new(x.Count),
-                localWork:  new(8));
+            evKern = losPrepare2.Execute();
             evIO = p.Read();
             ioTime += evIO.GetElapsed();
             kernelTime += evKern.GetElapsed();
@@ -357,18 +522,12 @@ namespace HelloWorld
                 }
 
                 losXr.SetArg(2, alpha);
-                evKern = losXr.Execute(
-                    globalWork: new(x.Count),
-                    localWork:  new(16)
-                );
+                evKern = losXr.Execute();
                 evIO = r.Read();
                 kernelTime += evKern.GetElapsed();
                 ioTime += evIO.GetElapsed();
 
-                evKern = arMul.Execute(
-                    globalWork: new(x.Count),
-                    localWork:  new(16)
-                );
+                evKern = arMul.Execute();
                 evIO = ar.Read();
                 kernelTime += evKern.GetElapsed();
                 ioTime += evIO.GetElapsed();
@@ -392,10 +551,7 @@ namespace HelloWorld
                 sw_host.Stop();
 
                 losFp.SetArg(2, beta);
-                evKern = losFp.Execute(
-                    globalWork: new(x.Count),
-                    localWork:  new(16)
-                );
+                evKern = losFp.Execute();
                 evIO = p.Read();
                 kernelTime += evKern.GetElapsed();
                 ioTime += evIO.GetElapsed();
@@ -426,7 +582,7 @@ namespace HelloWorld
             Console.WriteLine($"Вычисления на хосте: {sw_host.ElapsedMilliseconds}мс");
             Console.WriteLine($"Накладные расходы: {overhead}мс");
         }
-
+        
         static List<T> LoadArray<T>(
             StreamReader file)
         where T : INumber<T>
@@ -539,7 +695,11 @@ namespace HelloWorld
             {
                 pp = Dot(p, p);
                 Real alpha = Dot(r, p) / pp;
-
+                if (Real.IsNaN(alpha))
+                {
+                    break;
+                }
+                
                 for (int i = 0; i < (int)x.Count; i++)
                 {
                     x[i] += (alpha * f[i]);
@@ -561,8 +721,19 @@ namespace HelloWorld
             }
             sw_cpu.Stop();
 
+            Real max_err = Math.Abs(x[0] - 1);
+            for (int i = 0; i < (int)x.Count; i++)
+            {
+                var err = x[0] - i - 1;
+                if (err > max_err)
+                {
+                    max_err = err;
+                }
+            }
+            
             Console.WriteLine($"rr = {rr}");
             Console.WriteLine($"Итераций: {iter}");
+            Console.WriteLine($"max err: {max_err}");
             Console.WriteLine($"Время CPU: {sw_cpu.ElapsedMilliseconds}мс");
         }
 

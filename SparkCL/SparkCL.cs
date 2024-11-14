@@ -38,6 +38,8 @@ namespace SparkCL
         static internal Context? context;
         static internal CommandQueue? queue;
         static internal SparkOCL.Device? device;
+        static public ulong IOTime { get; internal set; } = 0;
+        static public ulong KernTime { get; internal set; } = 0;
 
         static public void Init()
         {
@@ -95,20 +97,24 @@ namespace SparkCL
             program = SparkOCL.Program.FromFilename(Core.context!, Core.device!, fileName);
         }
 
-        public SparkCL.Kernel GetKernel(string kernelName)
+        public SparkCL.Kernel GetKernel(string kernelName, NDRange globalWork, NDRange localWork)
         {
             var oclKernel = new SparkOCL.Kernel(program, kernelName);
-            return new Kernel(oclKernel);
+            return new Kernel(oclKernel, globalWork, localWork);
         }
     }
 
     class Kernel
     {
         SparkOCL.Kernel kernel;
+        public NDRange GlobalWork { get; set; }
+        public NDRange LocalWork { get; set; }
 
-        public Event Execute(NDRange globalWork, NDRange localWork)
+        public Event Execute()
         {
-            Core.queue!.EnqueueNDRangeKernel(kernel, new NDRange(), globalWork, localWork, out var ev);
+            Core.queue!.EnqueueNDRangeKernel(kernel, new NDRange(), GlobalWork, LocalWork, out var ev);
+            ev.Wait();
+            Core.KernTime += ev.GetElapsed();
             return ev;
         }
 
@@ -149,9 +155,11 @@ namespace SparkCL
             kernel.SetSize(idx, sz);
         }
 
-        internal Kernel(SparkOCL.Kernel kernel)
+        internal Kernel(SparkOCL.Kernel kernel, NDRange globalWork, NDRange localWork)
         {
             this.kernel = kernel;
+            GlobalWork = globalWork;
+            LocalWork = localWork;
         }
     }
 
@@ -221,6 +229,7 @@ namespace SparkCL
         )
         {
             Core.queue!.EnqueueReadBuffer(buffer, blocking, 0, array, out var ev);
+            Core.IOTime += ev.GetElapsed();
             return ev;
         }
 
@@ -229,6 +238,7 @@ namespace SparkCL
         )
         {
             Core.queue!.EnqueueWriteBuffer(buffer, blocking, 0, array, out var ev);
+            Core.IOTime += ev.GetElapsed();
             return ev;
         }
 
@@ -271,6 +281,19 @@ namespace SparkOCL
             }
 
             return time;
+        }
+        
+        unsafe public void Wait()
+        {
+            var api = CLHandle.Api;
+
+            var handle = Handle;
+            int err = api.WaitForEvents(1, &handle);
+            
+            if (err != (int)ErrorCodes.Success)
+            {
+                throw new System.Exception($"Couldn't wait for event, code: {err}");
+            }
         }
 
         internal Event(nint h)
