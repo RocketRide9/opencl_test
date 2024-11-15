@@ -177,11 +177,6 @@ namespace HelloWorld
                 sw_total.Start();
                 Real rnu = r_hat.Dot(nu);
                 Real alpha = pp / rnu;
-                if (Real.IsNaN(alpha))
-                {
-                    Console.WriteLine("альфа говно");
-                    break;
-                }
                 sw_total.Stop();
 
                 x.Write();
@@ -308,11 +303,6 @@ namespace HelloWorld
 
                 Real rnu = Dot(nu, r_hat);
                 Real alpha = pp / rnu;
-                if (Real.IsNaN(alpha))
-                {
-                    Console.WriteLine("альфа говно");
-                    break;
-                }
 
                 MyFor(0, x.Count, i =>
                 {
