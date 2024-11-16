@@ -163,7 +163,7 @@ namespace SparkCL
         }
     }
 
-    unsafe class Memory<T>:IDisposable
+    public unsafe class Memory<T> : IDisposable
     where T: unmanaged, INumber<T> 
     {
         internal Buffer<T> buffer;
@@ -795,7 +795,7 @@ namespace SparkOCL
         {
             var api = CLHandle.Api;
 
-            int err = api.SetKernelArg(Handle, arg_index, (nuint)sizeof(double) * sz, null);
+            int err = api.SetKernelArg(Handle, arg_index, (nuint)sizeof(float) * sz, null);
             if (err != (int)ErrorCodes.Success)
             {
                 throw new System.Exception($"Failed to set kernel argument, code: {err}");
@@ -825,7 +825,7 @@ namespace SparkOCL
         }
     }
 
-    unsafe class Array<T>:IDisposable
+    unsafe class Array<T> : IDisposable
     where T: unmanaged
     {
         public T* Buf { get; internal set; }

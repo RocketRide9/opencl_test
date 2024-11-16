@@ -9,7 +9,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Silk.NET.OpenCL" Version="2.21.0" />
+    <PackageReference Include="Silk.NET.OpenCL" Version="2.22.0" />
     <PackageReference Include="TelmaQuasar.Native.Int" Version="2.0.0" />
   </ItemGroup>
 
@@ -18,22 +18,22 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
 	<None Update="aptr">
-		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+	  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 	</None>
 	<None Update="jptr">
-		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+	  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 	</None>
 	<None Update="mat">
-		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+	  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 	</None>
 	<None Update="f">
-		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+	  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 	</None>
 	<None Update="x">
-		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 	</None>
 	<None Update="ans">
-		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 	</None>
   </ItemGroup>
 

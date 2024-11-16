@@ -1,6 +1,3 @@
-// Licensed to the .NET Foundation under one or more agreements.
-// The .NET Foundation licenses this file to you under the MIT license.
-
 using Silk.NET.OpenCL;
 using System;
 using System.Collections.Generic;
@@ -8,8 +5,9 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Numerics;
-using System.Threading.Tasks;
+
 using static SparkCL.EventExt;
+
 using Real = System.Double;
 // using SparkOCL;
 // using SparkCL;
@@ -27,10 +25,14 @@ namespace HelloWorld
             // DOT();
             // LOS_cpu();
             // LOS();
-            CPU_TEST.CPU.BiCGSTAB();
-            CPU_TEST.MKL.BiCGSTAB();
+            var s1 = new Solvers.Host.BiCGStab();
+            s1.SolveAndBreakdown();
+            
             Console.WriteLine();
-//            BiCGSTAB();
+            using var s2 = new Solvers.OpenCL.BiCGStab();
+            s2.SolveAndBreakdown();
+            
+            // BiCGSTAB();
         }
 
         static void DOT()
@@ -66,6 +68,8 @@ namespace HelloWorld
             Console.WriteLine($"dot = {f32[0]}");
             Console.WriteLine($"Time = {sw_gpu.ElapsedMilliseconds}");
         }
+        
+        /*
         
         static void BiCGSTAB()
         {
@@ -159,7 +163,6 @@ namespace HelloWorld
             r.Read();
             r_hat.Read();
             p.Read();
-
 
             int iter = 0;
             Real rr = 0;
@@ -260,8 +263,6 @@ namespace HelloWorld
             x.Dispose();
         }
 
-
-        
         static void print(SparkCL.Memory<Real> mem, uint first)
         {
             for (uint i = 0; i < mem.Count && i < first; i++)
@@ -277,22 +278,6 @@ namespace HelloWorld
                 Console.WriteLine($"{mem[(int)i]}");
             }
             Console.WriteLine("...");
-        }
-
-        static void MyFor(int i0, int i1, Action<int> iteration)
-        {
-            if (HOST_PARALLEL)
-            {
-                Parallel.For(i0, i1, (i) =>
-                {
-                    iteration(i);
-                });
-            } else {
-                for (int i = i0; i < i1; i++)
-                {
-                    iteration(i);
-                }
-            }
         }
         
         static void LOS()
@@ -437,18 +422,6 @@ namespace HelloWorld
                 evIO = ar.Read();
                 kernelTime += evKern.GetElapsed();
                 ioTime += evIO.GetElapsed();
-
-                /*
-                    dot.SetArg(0, p);
-                    dot.SetArg(1, ar);
-                    evKern = dot.Execute(
-                        globalWork: new(32),
-                        localWork:  new(32)
-                    );
-                    evIO = f32.Read();
-                    ioTime += evIO.GetElapsed();
-                    kernelTime += evKern.GetElapsed();
-                */
                 
                 sw_host.Start();
                 Real par = p.Dot(ar);
@@ -488,7 +461,6 @@ namespace HelloWorld
             Console.WriteLine($"Вычисления на хосте: {sw_host.ElapsedMilliseconds}мс");
             Console.WriteLine($"Накладные расходы: {overhead}мс");
         }
-        
 
         static void MSRMul(
             List<Real> mat,
@@ -498,22 +470,6 @@ namespace HelloWorld
             List<Real> v,
             ref List<Real> res)
         {
-            // var temp = new List<Real>(new Real[res.Count]);
-
-            /*
-            Parallel.For(0, n, (i, status) =>
-            {
-                int start = aptr[i];
-                int stop = aptr[i + 1];
-                Real dot = mat[i] * v[i];
-                for (int a = start; a < stop; a++)
-                {
-                    dot += mat[a] * v[jptr[a - n]];
-                }
-                temp[i] = dot;
-            });
-            */
-
             var binding = res;
             MyFor(0, n, i =>
             {
@@ -526,8 +482,6 @@ namespace HelloWorld
                 }
                 binding[i] = dot;
             });
-
-            // res = temp;
         }
 
         static Real Dot(
@@ -648,6 +602,8 @@ namespace HelloWorld
             Console.WriteLine($"Время CPU: {sw_cpu.ElapsedMilliseconds}мс");
         }
 
+        */
+        
         /*
         static Span<real> SimpleMul(
             Context context,

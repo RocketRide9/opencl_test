@@ -9,7 +9,7 @@ using VectorInt = int[];
 
 namespace Solvers
 {
-    namespace MKL
+    namespace Host
     {
         public class BiCGStab
         {
@@ -23,8 +23,9 @@ namespace Solvers
             VectorReal s;
             VectorReal t;
             
-            BiCGStab()
+            public BiCGStab()
             {
+                SparkCL.Core.Init();
                 slae = new();
                 slae.LoadFromFiles();
                 
@@ -113,7 +114,7 @@ namespace Solvers
                 return (rr, pp, iter);
             }
             
-            void SolveAndBreakdown()
+            public void SolveAndBreakdown()
             {
                 var slae = new HostSlae();
                 slae.LoadFromFiles();
@@ -134,7 +135,7 @@ namespace Solvers
                     }
                 }
 
-                Console.WriteLine("Решение с MKL");
+                Console.WriteLine("Решение 'на процессоре'");
                 Console.WriteLine($"rr = {rr}");
                 Console.WriteLine($"pp = {pp}");
                 Console.WriteLine($"max err. = {max_err}");
