@@ -5,6 +5,11 @@ VisualStudioVersion = 17.5.002.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ocl_test", "ocl_test.csproj", "{8C10AD25-0F13-432B-B82C-FB728808775F}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "benchmark", "..\benchmark\benchmark.csproj", "{0E79B893-0407-436D-9CD0-C405FFD11EB8}"
+	ProjectSection(ProjectDependencies) = postProject
+		{8C10AD25-0F13-432B-B82C-FB728808775F} = {8C10AD25-0F13-432B-B82C-FB728808775F}
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -15,6 +20,10 @@ Global
 		{8C10AD25-0F13-432B-B82C-FB728808775F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{8C10AD25-0F13-432B-B82C-FB728808775F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{8C10AD25-0F13-432B-B82C-FB728808775F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0E79B893-0407-436D-9CD0-C405FFD11EB8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0E79B893-0407-436D-9CD0-C405FFD11EB8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0E79B893-0407-436D-9CD0-C405FFD11EB8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0E79B893-0407-436D-9CD0-C405FFD11EB8}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
