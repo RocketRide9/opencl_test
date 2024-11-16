@@ -72,20 +72,20 @@ namespace HelloWorld
             SparkCL.Core.Init();
 
             // на Intel флаги не повлияли на производительность
-            using var mat =   new SparkCL.Memory<Real>(File.OpenText("./mat"));
-            using var f =     new SparkCL.Memory<Real>(File.OpenText("./f"));
-            using var aptr =  new SparkCL.Memory<int> (File.OpenText("./aptr"));
-            using var jptr =  new SparkCL.Memory<int> (File.OpenText("./jptr"));
-            var x =     new SparkCL.Memory<Real>(File.OpenText("./x"));
-            var ans =   LoadArray<Real>         (File.OpenText("./ans"));
+            using var mat  = new SparkCL.Memory<Real>(File.OpenText("./mat"));
+            using var f    = new SparkCL.Memory<Real>(File.OpenText("./f"));
+            using var aptr = new SparkCL.Memory<int> (File.OpenText("./aptr"));
+            using var jptr = new SparkCL.Memory<int> (File.OpenText("./jptr"));
+                  var x    = new SparkCL.Memory<Real>(File.OpenText("./x"));
+                  var ans  =          LoadArray<Real>(File.OpenText("./ans"));
 
-            using var r =     new SparkCL.Memory<Real>(x.Count);
+            using var r     = new SparkCL.Memory<Real>(x.Count);
             using var r_hat = new SparkCL.Memory<Real>(x.Count);
-            using var p =     new SparkCL.Memory<Real>(x.Count);
-            using var nu =    new SparkCL.Memory<Real>(x.Count);
-            using var h =     new SparkCL.Memory<Real>(x.Count);
-            using var s =     new SparkCL.Memory<Real>(x.Count);
-            using var t =     new SparkCL.Memory<Real>(x.Count);
+            using var p     = new SparkCL.Memory<Real>(x.Count);
+            using var nu    = new SparkCL.Memory<Real>(x.Count);
+            using var h     = new SparkCL.Memory<Real>(x.Count);
+            using var s     = new SparkCL.Memory<Real>(x.Count);
+            using var t     = new SparkCL.Memory<Real>(x.Count);
 
             // var f32 = new SparkCL.Memory<Real>(1);
 

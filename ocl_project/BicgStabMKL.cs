@@ -1,4 +1,5 @@
 #define HOST_PARALLEL
+
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -19,7 +20,6 @@ namespace CPU_TEST
     {
         const int MAX_ITER = (int)1e+3;
         const Real EPS = 1e-13F;
-
 
         static T[] LoadArray<T>(StreamReader file) where T : INumber<T>
         {
@@ -54,51 +54,40 @@ namespace CPU_TEST
         }
         public class SLAE
         {
-            public VectorReal mat =[];
-            public VectorReal f = [];
-            public VectorInt aptr = [] ;
-            public VectorInt jptr = [] ;
-            public VectorReal x = []  ;
-            public VectorReal ans = [] ;
+            public VectorReal mat  = [];
+            public VectorReal f    = [];
+            public VectorInt  aptr = [];
+            public VectorInt  jptr = [];
+            public VectorReal x    = [];
+            public VectorReal ans  = [];
 
             public void LoadFromFiles()
             {
-                mat = LoadArray<Real>(File.OpenText("../../../test/mat"));
-                f = LoadArray<Real>(File.OpenText("../../../test/f"));
-                aptr = LoadArray<int>(File.OpenText("../../../test/aptr"));
-                jptr = LoadArray<int>(File.OpenText("../../../test/jptr"));
-                x = LoadArray<Real>(File.OpenText("../../../test/x"));
-                ans = LoadArray<Real>(File.OpenText("../../../test/ans"));
-
-            Console.WriteLine(sum(1, 2));
-                Console.WriteLine(sum(1, 2,3));
-                Console.WriteLine(sum(4, 5, 6,7));
-
-
+                mat  = LoadArray<Real>(File.OpenText("../../../test/mat"));
+                f    = LoadArray<Real>(File.OpenText("../../../test/f"));
+                aptr = LoadArray<int> (File.OpenText("../../../test/aptr"));
+                jptr = LoadArray<int> (File.OpenText("../../../test/jptr"));
+                x    = LoadArray<Real>(File.OpenText("../../../test/x"));
+                ans  = LoadArray<Real>(File.OpenText("../../../test/ans"));
             }
             public (Real rr, Real pp, VectorReal x, int iter) Solve()
             {
-                var r = new Real[x.Length];
+                var r     = new Real[x.Length];
                 var r_hat = new Real[x.Length];
-                var p = new Real[x.Length];
-                var nu = new Real[x.Length];
-                var h = new Real[x.Length];
-                var s = new Real[x.Length];
-                var t = new Real[x.Length];
-
-                // var f32 = new SparkCL.Memory<Real>(1);
+                var p     = new Real[x.Length];
+                var nu    = new Real[x.Length];
+                var h     = new Real[x.Length];
+                var s     = new Real[x.Length];
+                var t     = new Real[x.Length];
 
                 // BiCGSTAB
-
                 MSRMul(mat, aptr, jptr, x.Length, x, t);
                 MyFor(0, x.Length, i =>
                 {
                     r[i] = f[i] - t[i];
                     r_hat[i] = r[i];
                     p[i] = r[i];
-
                 });
-
 
                 int iter = 0;
                 Real rr = 0;
@@ -235,11 +224,13 @@ namespace CPU_TEST
             }
 #endif
         }
+        /*
         public static T sum<T>(params IEnumerable<T> parm) where T:INumber<T>
         {
             T res=T.Zero;
             foreach (var s in parm) res += s;
             return res;
         }
+        */
     }
 }
