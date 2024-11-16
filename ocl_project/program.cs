@@ -28,6 +28,7 @@ namespace HelloWorld
             // LOS_cpu();
             // LOS();
             CPU_TEST.CPU.BiCGSTAB();
+            CPU_TEST.MKL.BiCGSTAB();
             Console.WriteLine();
 //            BiCGSTAB();
         }
@@ -36,9 +37,9 @@ namespace HelloWorld
         {
             SparkCL.Core.Init();
 
-            var d1 = new SparkCL.Memory<Real>(File.OpenText("./x"));
-            var d2 = new SparkCL.Memory<Real>(File.OpenText("./x"));
-            var f32 = new SparkCL.Memory<Real>([0]);
+            using var d1 = new SparkCL.Memory<Real>(File.OpenText("./x"));
+            using var d2 = new SparkCL.Memory<Real>(File.OpenText("./x"));
+            using var f32 = new SparkCL.Memory<Real>([0]);
 
             var sw_gpu = new Stopwatch();
             sw_gpu.Start();
@@ -71,20 +72,20 @@ namespace HelloWorld
             SparkCL.Core.Init();
 
             // на Intel флаги не повлияли на производительность
-            var mat =   new SparkCL.Memory<Real>(File.OpenText("./mat"));
-            var f =     new SparkCL.Memory<Real>(File.OpenText("./f"));
-            var aptr =  new SparkCL.Memory<int> (File.OpenText("./aptr"));
-            var jptr =  new SparkCL.Memory<int> (File.OpenText("./jptr"));
+            using var mat =   new SparkCL.Memory<Real>(File.OpenText("./mat"));
+            using var f =     new SparkCL.Memory<Real>(File.OpenText("./f"));
+            using var aptr =  new SparkCL.Memory<int> (File.OpenText("./aptr"));
+            using var jptr =  new SparkCL.Memory<int> (File.OpenText("./jptr"));
             var x =     new SparkCL.Memory<Real>(File.OpenText("./x"));
             var ans =   LoadArray<Real>         (File.OpenText("./ans"));
 
-            var r =     new SparkCL.Memory<Real>(x.Count);
-            var r_hat = new SparkCL.Memory<Real>(x.Count);
-            var p =     new SparkCL.Memory<Real>(x.Count);
-            var nu =    new SparkCL.Memory<Real>(x.Count);
-            var h =     new SparkCL.Memory<Real>(x.Count);
-            var s =     new SparkCL.Memory<Real>(x.Count);
-            var t =     new SparkCL.Memory<Real>(x.Count);
+            using var r =     new SparkCL.Memory<Real>(x.Count);
+            using var r_hat = new SparkCL.Memory<Real>(x.Count);
+            using var p =     new SparkCL.Memory<Real>(x.Count);
+            using var nu =    new SparkCL.Memory<Real>(x.Count);
+            using var h =     new SparkCL.Memory<Real>(x.Count);
+            using var s =     new SparkCL.Memory<Real>(x.Count);
+            using var t =     new SparkCL.Memory<Real>(x.Count);
 
             // var f32 = new SparkCL.Memory<Real>(1);
 
@@ -193,6 +194,7 @@ namespace HelloWorld
                 Real ss = s.Dot(s);
                 if (ss < EPS)
                 {
+                    x.Dispose();
                     x = h;
                     break;
                 }
@@ -255,6 +257,7 @@ namespace HelloWorld
             Console.WriteLine($"Код OpenCL: {SparkCL.Core.KernTime/1_000_000}мс");
             Console.WriteLine($"Вычисления на хосте: {sw_total.ElapsedMilliseconds}мс");
             Console.WriteLine($"Накладные расходы: {overhead}мс");
+            x.Dispose();
         }
 
 

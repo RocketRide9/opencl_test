@@ -1,10 +1,11 @@
-﻿// See https://aka.ms/new-console-template for more information
+// See https://aka.ms/new-console-template for more information
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Running;
 
 var summaries = BenchmarkSwitcher.FromAssembly(typeof(TestCPU).Assembly).RunAll();
-[SimpleJob(RuntimeMoniker.Net80, baseline: true)]
+[SimpleJob(RuntimeMoniker.HostProcess, baseline: true)]
+[SimpleJob(RuntimeMoniker.Net90)]
 public class TestCPU
 {
     double[] x, y;
@@ -26,15 +27,18 @@ public class TestCPU
         yl = new List<double>(y);
     }
     [Benchmark]
-    public double DotList()=>CPU_TEST.CPU.Dot(xl, yl);
+    public double DotArray()=>CPU_TEST.CPU.Dot(x, y);
+    [Benchmark]
+    public double DotMKL()=> Quasar.Native.BLAS.dot(x.Length, x, y);
+
     [Benchmark (Baseline =true)]
-    public double DotArray()
+    public double DotList()
     {
         double acc = 0;
 
-        for (int i = 0; i < x.Length; i++)
+        for (int i = 0; i < xl.Count; i++)
         {
-            acc += x[i] * y[i];
+            acc += xl[i] * yl[i];
         }
         return acc;
     }

@@ -163,15 +163,15 @@ namespace SparkCL
         }
     }
 
-    unsafe class Memory<T>
-    where T: unmanaged, INumber<T>
+    unsafe class Memory<T>:IDisposable
+    where T: unmanaged, INumber<T> 
     {
         internal Buffer<T> buffer;
-        internal void* mappedPtr;
+//        internal void* mappedPtr;
         internal Array<T> array;
         public nuint Count { get => array.Count; }
 
-        public Memory(List<T> in_array, MemFlags flags = MemFlags.ReadWrite)
+        public Memory(ReadOnlySpan<T> in_array, MemFlags flags = MemFlags.ReadWrite)
         {
             this.array = new(in_array);
             buffer = new(Core.context!, flags | MemFlags.UseHostPtr, this.array);
@@ -209,20 +209,20 @@ namespace SparkCL
             set => array[i] = value;
         }
 
-        public Event Map(
-            MapFlags flags,
-            bool blocking = true
-        )
-        {
-            mappedPtr = Core.queue!.EnqueueMapBuffer(buffer, blocking, flags, 0, array.Count, out var ev);
-            return ev;
-        }
+        //public Event Map(
+        //    MapFlags flags,
+        //    bool blocking = true
+        //)
+        //{
+        //    mappedPtr = Core.queue!.EnqueueMapBuffer(buffer, blocking, flags, 0, array.Count, out var ev);
+        //    return ev;
+        //}
 
-        unsafe public Event Unmap()
-        {
-            Core.queue!.EnqueueUnmapMemObject(buffer, mappedPtr, out var ev);
-            return ev;
-        }
+        //unsafe public Event Unmap()
+        //{
+        //    Core.queue!.EnqueueUnmapMemObject(buffer, mappedPtr, out var ev);
+        //    return ev;
+        //}
 
         public Event Read(
             bool blocking = true
@@ -250,6 +250,37 @@ namespace SparkCL
                 res += this[i] * rhs[i];
             }
             return res;
+        }
+
+        private bool disposedValue;
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!disposedValue)
+            {
+                if (disposing)
+                {
+                    // TODO: dispose managed state (managed objects)
+                }
+                array.Dispose();
+                // TODO: free unmanaged resources (unmanaged objects) and override finalizer
+                // TODO: set large fields to null
+                disposedValue = true;
+            }
+        }
+
+        // TODO: override finalizer only if 'Dispose(bool disposing)' has code to free unmanaged resources
+        ~Memory()
+        {
+            // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
+            Dispose(disposing: false);
+        }
+
+        public void Dispose()
+        {
+            // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
+            Dispose(disposing: true);
+            GC.SuppressFinalize(this);
         }
     }
 }
@@ -794,29 +825,25 @@ namespace SparkOCL
         }
     }
 
-    unsafe class Array<T>
+    unsafe class Array<T>:IDisposable
     where T: unmanaged
     {
-        public void* Buf { get; internal set; }
+        public T* Buf { get; internal set; }
         public nuint Count { get; }
         public nuint ElementSize { get; }
 
-        public Array (List<T> array)
+        public Array (ReadOnlySpan<T> array)
         {
             ElementSize = (nuint)sizeof(T);
-            Buf = NativeMemory.AlignedAlloc((nuint)array.Count * ElementSize, 4096);
-            this.Count = (nuint)array.Count;
-
-            for (int i = 0; i < array.Count; i++)
-            {
-                this[i] = array[i];
-            }
+            Buf = (T*)NativeMemory.AlignedAlloc((nuint)array.Length * ElementSize, 4096);
+            this.Count = (nuint)array.Length;
+            array.CopyTo(new Span<T>(Buf, array.Length));
         }
 
         public Array (nuint size)
         {
             ElementSize = (nuint)sizeof(T);
-            Buf = NativeMemory.AlignedAlloc(size * ElementSize, 4096);
+            Buf = (T*)NativeMemory.AlignedAlloc(size * ElementSize, 4096);
             this.Count = size;
         }
 
@@ -824,19 +851,45 @@ namespace SparkOCL
         {
             get
             {
-                var sp = new Span<T>(Buf, (int)Count);
-                return sp[i];
+                return Buf[i];
             }
             set
             {
-                var sp = new Span<T>(Buf, (int)Count);
-                sp[i] = value;
+                Buf[i] = value;
             }
         }
 
+
+        private bool disposedValue;
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!disposedValue)
+            {
+                if (disposing)
+                {
+                    // TODO: dispose managed state (managed objects)
+                }
+
+                NativeMemory.AlignedFree(Buf);
+                // TODO: free unmanaged resources (unmanaged objects) and override finalizer
+                // TODO: set large fields to null
+                disposedValue = true;
+            }
+        }
+
+        // TODO: override finalizer only if 'Dispose(bool disposing)' has code to free unmanaged resources
         ~Array()
         {
-            NativeMemory.AlignedFree(Buf);
+            // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
+            Dispose(disposing: false);
+        }
+
+        public void Dispose()
+        {
+            // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
+            Dispose(disposing: true);
+            GC.SuppressFinalize(this);
         }
     }
 

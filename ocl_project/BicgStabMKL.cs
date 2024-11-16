@@ -12,9 +12,10 @@ using HelloWorld;
 using Real = double;
 using VectorReal = double[];
 using VectorInt = int[];
+
 namespace CPU_TEST
 {
-    public static class CPU
+    public static class MKL
     {
         const int MAX_ITER = (int)1e+3;
         const Real EPS = 1e-13F;
@@ -62,12 +63,18 @@ namespace CPU_TEST
 
             public void LoadFromFiles()
             {
-                 mat = LoadArray<Real>(File.OpenText("../../../test/mat"));
-                 f = LoadArray<Real>(File.OpenText("../../../test/f"));
-                 aptr = LoadArray<int>(File.OpenText("../../../test/aptr"));
-                 jptr = LoadArray<int>(File.OpenText("../../../test/jptr"));
-                 x = LoadArray<Real>(File.OpenText("../../../test/x"));
-                 ans = LoadArray<Real>(File.OpenText("../../../test/ans"));
+                mat = LoadArray<Real>(File.OpenText("../../../test/mat"));
+                f = LoadArray<Real>(File.OpenText("../../../test/f"));
+                aptr = LoadArray<int>(File.OpenText("../../../test/aptr"));
+                jptr = LoadArray<int>(File.OpenText("../../../test/jptr"));
+                x = LoadArray<Real>(File.OpenText("../../../test/x"));
+                ans = LoadArray<Real>(File.OpenText("../../../test/ans"));
+
+            Console.WriteLine(sum(1, 2));
+                Console.WriteLine(sum(1, 2,3));
+                Console.WriteLine(sum(4, 5, 6,7));
+
+
             }
             public (Real rr, Real pp, VectorReal x, int iter) Solve()
             {
@@ -215,7 +222,7 @@ namespace CPU_TEST
         static void MyFor(int i0, int i1, Action<int> iteration)
         {
 #if HOST_PARALLEL
-                Parallel.For(i0, i1, (i) =>
+                Parallel.For(i0, i1,(i) =>
                 {
                     iteration(i);
                 });
@@ -227,6 +234,12 @@ namespace CPU_TEST
                 }
             }
 #endif
+        }
+        public static T sum<T>(params IEnumerable<T> parm) where T:INumber<T>
+        {
+            T res=T.Zero;
+            foreach (var s in parm) res += s;
+            return res;
         }
     }
 }
