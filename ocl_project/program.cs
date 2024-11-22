@@ -25,10 +25,12 @@ namespace HelloWorld
             // DOT();
             // LOS_cpu();
             // LOS();
-            var s1 = new Solvers.Host.BiCGStab();
+            SparkCL.Core.Init();
+            var s1 = new Solvers.MKL.BiCGStab();
             s1.SolveAndBreakdown();
             
             Console.WriteLine();
+
             using var s2 = new Solvers.OpenCL.BiCGStab();
             s2.SolveAndBreakdown();
             

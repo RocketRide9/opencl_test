@@ -25,7 +25,6 @@ namespace Solvers
             
             public BiCGStab()
             {
-                SparkCL.Core.Init();
                 slae = new();
                 slae.LoadFromFiles();
                 

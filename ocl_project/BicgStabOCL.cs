@@ -38,7 +38,7 @@ namespace Solvers
                 t     = new SparkCL.Memory<Real>(slae.x.Count);
             }
             
-            (Real, Real, int, long) Solve()
+            public (Real, Real, int, long) Solve()
             {
                 // Вынос векторов в текущую область видимости
                 using var mat  = slae.mat;
@@ -114,6 +114,8 @@ namespace Solvers
                     
                 // BiCGSTAB
                 prepare1.Execute();
+                r.CopyTo(r_hat);
+                r.CopyTo(p);
                 r.Read();
                 r_hat.Read();
                 p.Read();

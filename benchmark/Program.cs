@@ -4,43 +4,26 @@ using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Running;
 
 var summaries = BenchmarkSwitcher.FromAssembly(typeof(TestCPU).Assembly).RunAll();
-[SimpleJob(RuntimeMoniker.HostProcess, baseline: true)]
-[SimpleJob(RuntimeMoniker.Net90)]
+
+[SimpleJob(RuntimeMoniker.Net80)]
 public class TestCPU
 {
-    double[] x, y;
-    List<double> xl, yl;
-    [Params(10000, 100000, 2000000)]
-    public int N;
+    Solvers.MKL.BiCGStab mkl;
+    Solvers.OpenCL.BiCGStab ocl;
 
     [GlobalSetup]
     public void Setup()
     {
-        var rnd = new Random();
-        x=new double[N];
-        y=new double[N];
-        
-        for(int i = 0; i < N; i++) {
-            x[i] = rnd.NextDouble();
-            y[i]= rnd.NextDouble();}
-        xl = new List<double>(x);
-        yl = new List<double>(y);
+        SparkCL.Core.Init();
+        Console.WriteLine(Directory.GetCurrentDirectory());
+
+        mkl = new Solvers.MKL.BiCGStab();
+        ocl = new Solvers.OpenCL.BiCGStab();
     }
     [Benchmark]
-    public double DotArray()=>CPU_TEST.CPU.Dot(x, y);
-    [Benchmark]
-    public double DotMKL()=> Quasar.Native.BLAS.dot(x.Length, x, y);
+    public (float, float, int) SolveMKL() => mkl.Solve();
 
     [Benchmark (Baseline =true)]
-    public double DotList()
-    {
-        double acc = 0;
-
-        for (int i = 0; i < xl.Count; i++)
-        {
-            acc += xl[i] * yl[i];
-        }
-        return acc;
-    }
+    public (float, float, int, long) SolveOCL() => ocl.Solve();
 
 }

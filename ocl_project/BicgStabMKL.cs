@@ -1,11 +1,13 @@
 using System;
 using System.Diagnostics;
+using Quasar.Native;
 
 using static Solvers.Shared;
 
 using Real = float;
 using VectorReal = float[];
 using VectorInt = int[];
+using System.Linq;
 
 namespace Solvers
 {
@@ -13,7 +15,7 @@ namespace Solvers
     {
         public class BiCGStab
         {
-            HostSlae slae = new();
+            HostSlae slae;
 
             VectorReal r;
             VectorReal r_hat;
@@ -23,7 +25,7 @@ namespace Solvers
             VectorReal s;
             VectorReal t;
             
-            BiCGStab()
+            public BiCGStab()
             {
                 slae = new();
                 slae.LoadFromFiles();
@@ -37,7 +39,7 @@ namespace Solvers
                 t     = new Real[slae.x.Length];
             }
             
-            (Real, Real, int) Solve()
+            public (Real, Real, int) Solve()
             {
                 // Вынос векторов в текущую область видимости
                 var mat  = slae.mat;
@@ -52,31 +54,34 @@ namespace Solvers
                 MyFor(0, x.Length, i =>
                 {
                     r[i] = f[i] - t[i];
-                    r_hat[i] = r[i];
-                    p[i] = r[i];
                 });
+                r.CopyTo(r_hat, 0);
+                r.CopyTo(p, 0);
 
                 int iter = 0;
                 Real rr = 0;
                 
-                Real pp = Dot(r, r); // r_hat * r
+                Real pp = (Real)BLAS.dot(x.Length, r, r); // r_hat * r
                 
                 for (; iter < MAX_ITER; iter++)
                 {
                     MSRMul(mat, aptr, jptr, x.Length, p, nu);
                     
-                    Real rnu = Dot(nu, r_hat);
+                    Real rnu = (Real)BLAS.dot(x.Length, nu, r_hat);
                     Real alpha = pp / rnu;
                     
                     MyFor(0, x.Length, i =>
                     {
                         h[i] = x[i] + alpha * p[i];
+                    });
+                    MyFor(0, x.Length, i =>
+                    {
                         s[i] = r[i] - alpha * nu[i];
                     });
                     // print(s, 5);
                     // return;
-                    
-                    Real ss = Dot(s, s);
+
+                    Real ss = (Real)BLAS.dot(x.Length, s, s);
                     if (ss < EPS)
                     {
                         x = h;
@@ -85,23 +90,26 @@ namespace Solvers
                     
                     MSRMul(mat, aptr, jptr, x.Length, s, t);
                     
-                    Real ts = Dot(s, t);
-                    Real tt = Dot(t, t);
+                    Real ts = (Real)BLAS.dot(x.Length, s, t);
+                    Real tt = (Real)BLAS.dot(x.Length, t, t);
                     Real w = ts / tt;
                     
                     MyFor(0, x.Length, i =>
                     {
                         x[i] = h[i] + w * s[i];
+                    });
+                    MyFor(0, x.Length, i =>
+                    {
                         r[i] = s[i] - w * t[i];
                     });
-                    
-                    rr = Dot(r, r);
+
+                    rr = (Real)BLAS.dot(x.Length, r, r);
                     if (rr < EPS)
                     {
                         break;
                     }
                     
-                    Real pp1 = Dot(r, r_hat);
+                    Real pp1 = (Real)BLAS.dot(x.Length, r, r_hat);
                     Real beta = (pp1 / pp) * (alpha / w);
                     
                     MyFor(0, x.Length, i =>
@@ -113,11 +121,8 @@ namespace Solvers
                 return (rr, pp, iter);
             }
             
-            void SolveAndBreakdown()
+            public void SolveAndBreakdown()
             {
-                var slae = new HostSlae();
-                slae.LoadFromFiles();
-                
                 var sw_host = new Stopwatch();
                 sw_host.Start();
                 var (rr, pp, iter) = Solve();

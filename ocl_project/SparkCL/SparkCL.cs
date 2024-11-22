@@ -30,7 +30,7 @@ namespace SparkCL
         }
     }
 
-    static class Core
+    static public class Core
     {
         static internal Context? context;
         static internal CommandQueue? queue;
@@ -243,6 +243,16 @@ namespace SparkCL
         )
         {
             Core.queue!.EnqueueWriteBuffer(buffer, blocking, 0, array, out var ev);
+            Core.IOTime += ev.GetElapsed();
+            return ev;
+        }
+
+        public Event CopyTo(
+            Memory<T> destination
+        )
+        {
+            Core.queue!.EnqueueCopyBuffer(buffer, destination.buffer, 0, 0, Count, out var ev);
+            ev.Wait();
             Core.IOTime += ev.GetElapsed();
             return ev;
         }

@@ -189,8 +189,6 @@ kernel void BiCGSTAB_prepare1
     uint i = get_global_id(0);
     
     r[i] = f[i] - MSRMulSingle(mat, aptr, jptr, n, x);
-    r_hat[i] = r[i];
-    p[i] = r[i];
 }
 
 kernel void BiCGSTAB_hs

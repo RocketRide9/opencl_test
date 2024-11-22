@@ -415,6 +415,34 @@ namespace SparkOCL
             @event = new Event(event_h);
         }
 
+        public unsafe void EnqueueCopyBuffer<T>(
+            Buffer<T> src,
+            Buffer<T> dst,
+            nuint src_offset,
+            nuint dst_offset,
+            nuint size,
+            out Event @event)
+        where T : unmanaged
+        {
+            nint event_h;
+            int err = OCL.EnqueueCopyBuffer(
+                Handle,
+                src.Handle,
+                dst.Handle,
+                src_offset,
+                dst_offset,
+                size,
+                0,
+                null,
+                out event_h);
+
+            if (err != (int)ErrorCodes.Success)
+            {
+                throw new System.Exception($"Couldn't enqueue memory object unmap, code: {err}");
+            }
+            @event = new Event(event_h);
+        }
+
         private CommandQueue(nint h)
         {
             Handle = h;
