@@ -3,6 +3,11 @@
 ##
 ## Get latest from https://github.com/github/gitignore/blob/master/VisualStudio.gitignore
 
+# файлы этого проекта
+.ropeproject
+.mypy_cache
+slae
+
 # User-specific files
 *.rsuser
 *.suo
