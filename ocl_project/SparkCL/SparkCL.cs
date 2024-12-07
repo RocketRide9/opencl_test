@@ -1,4 +1,6 @@
 using Silk.NET.OpenCL;
+using Quasar.Native;
+
 using System;
 using System.Numerics;
 using System.IO;
@@ -259,6 +261,13 @@ namespace SparkCL
 
         public T Dot(Memory<T> rhs)
         {
+            // float res = (float)BLAS.dot(
+            //     (int) this.Count,
+            //     new ReadOnlySpan<float>(    array.Buf, (int)Count),
+            //     new ReadOnlySpan<float>(rhs.array.Buf, (int)Count)
+            // );
+            // return res;
+
             T res = default;
             for (int i = 0; i < (int)Count; i++)
             {

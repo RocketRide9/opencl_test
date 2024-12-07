@@ -63,7 +63,6 @@ namespace Solvers
                     prepare1.PushArg(jptr);
                     prepare1.PushArg((uint)x.Count);
                     prepare1.PushArg(r);
-                    prepare1.PushArg(r_hat);
                     prepare1.PushArg(p);
                     prepare1.PushArg(f);
                     prepare1.PushArg(x);
@@ -80,28 +79,11 @@ namespace Solvers
                     kernMul.PushArg(p);
                     kernMul.PushArg(nu);
     
-                var kernHS = solvers.GetKernel(
-                    "BiCGSTAB_hs",
-                    globalWork: new(x.Count),
+                var kernXpay = solvers.GetKernel(
+                    "BLAS_xpay",
+                    globalWork: new(x.Count/4),
                     localWork:  new(32)
                 );
-                    kernHS.PushArg(h);
-                    kernHS.PushArg(s);
-                    kernHS.PushArg(p);
-                    kernHS.PushArg(nu);
-                    kernHS.PushArg(x);
-                    kernHS.PushArg(r);
-                    
-                var kernXR = solvers.GetKernel(
-                    "BiCGSTAB_xr",
-                    globalWork: new(x.Count),
-                    localWork:  new(32)
-                );
-                    kernXR.PushArg(x);
-                    kernXR.PushArg(r);
-                    kernXR.PushArg(h);
-                    kernXR.PushArg(s);
-                    kernXR.PushArg(t);
     
                 var kernP = solvers.GetKernel(
                     "BiCGSTAB_p",
@@ -138,12 +120,20 @@ namespace Solvers
                     Real rnu = r_hat.Dot(nu);
                     Real alpha = pp / rnu;
                     sw_host.Stop();
-    
-                    x.Write();
-                    p.Write();
-                    r.Write();
-                    kernHS.SetArg(6, alpha);
-                    kernHS.Execute();
+                    
+                    // 3. h = x + alpha*p
+                    kernXpay.SetArg(0, h);
+                    kernXpay.SetArg(1, x);
+                    kernXpay.SetArg(2, alpha);
+                    kernXpay.SetArg(3, p);
+                    kernXpay.Execute();
+                    // 4.
+                    kernXpay.SetArg(0, s);
+                    kernXpay.SetArg(1, r);
+                    kernXpay.SetArg(2, -alpha);
+                    kernXpay.SetArg(3, nu);
+                    kernXpay.Execute();
+                    
                     s.Read();
                     h.Read();
                     // print(s, 5);
@@ -170,8 +160,20 @@ namespace Solvers
                     Real w = ts / tt;
                     sw_host.Stop();
     
-                    kernXR.SetArg(5, w);
-                    kernXR.Execute();
+                    // 8. 
+                    kernXpay.SetArg(0, x);
+                    kernXpay.SetArg(1, h);
+                    kernXpay.SetArg(2, w);
+                    kernXpay.SetArg(3, s);
+                    kernXpay.Execute();
+                    
+                    // 9.
+                    kernXpay.SetArg(0, r);
+                    kernXpay.SetArg(1, s);
+                    kernXpay.SetArg(2, -w);
+                    kernXpay.SetArg(3, t);
+                    kernXpay.Execute();
+                    
                     r.Read();
                     x.Read();
     

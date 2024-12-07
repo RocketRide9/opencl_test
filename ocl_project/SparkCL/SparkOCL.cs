@@ -556,7 +556,7 @@ namespace SparkOCL
         {
             ElementSize = (nuint)sizeof(T);
             Buf = (T*)NativeMemory.AlignedAlloc(size * ElementSize, 4096);
-            this.Count = size;
+            Count = size;
         }
 
         public T this[int i]

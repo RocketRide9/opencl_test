@@ -180,7 +180,6 @@ kernel void BiCGSTAB_prepare1
     const int n,
     // вспомогательные массивы
     global real *r,
-    global real *r_hat,
     global real *p,
     global const real *f,
     global const real *x
@@ -191,37 +190,19 @@ kernel void BiCGSTAB_prepare1
     r[i] = f[i] - MSRMulSingle(mat, aptr, jptr, n, x);
 }
 
-kernel void BiCGSTAB_hs
+// X Plus A*Y
+kernel void BLAS_xpay
 (
-    global real *h,
-    global real *s,
-    global const real *p,
-    global const real *nu,
-    global const real *x,
-    global const real *r,
-    const real alpha
+    global real4 *res,
+    global real4 *x,
+    const real a,
+    global const real4 *y
 )
 {
     uint i = get_global_id(0);
     
-    h[i] = x[i] + alpha * p[i];
-    s[i] = r[i] - alpha * nu[i];
-}
-
-kernel void BiCGSTAB_xr
-(
-    global real *x,
-    global real *r,
-    global const real *h,
-    global const real *s,
-    global const real *t,
-    const real w
-)
-{
-    uint i = get_global_id(0);
-    
-    x[i] = h[i] + w * s[i];
-    r[i] = s[i] - w * t[i];
+    // res[i] = x[i] + a * y[i];
+    res[i] = mad(a, y[i], x[i]);
 }
 
 kernel void BiCGSTAB_p
