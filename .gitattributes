@@ -1,0 +1,6 @@
+slae/ans filter=lfs diff=lfs merge=lfs -text
+slae/aptr filter=lfs diff=lfs merge=lfs -text
+slae/f filter=lfs diff=lfs merge=lfs -text
+slae/jptr filter=lfs diff=lfs merge=lfs -text
+slae/mat filter=lfs diff=lfs merge=lfs -text
+slae/x filter=lfs diff=lfs merge=lfs -text
