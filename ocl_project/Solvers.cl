@@ -201,8 +201,10 @@ kernel void BLAS_xpay
 {
     uint i = get_global_id(0);
     
-    // res[i] = x[i] + a * y[i];
-    res[i] = mad(a, y[i], x[i]);
+    res[i] = x[i] + a * y[i];
+    // res[i] = mad(a, y[i], x[i]);
+    // на практие mad не показал прирост в производительности
+    // надо проверить его ещё и на nvidia
 }
 
 kernel void BiCGSTAB_p

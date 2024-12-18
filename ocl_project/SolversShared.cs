@@ -106,14 +106,14 @@ namespace Solvers
     
     public class HostSlae
     {
-        public VectorReal mat  = [];
-        public VectorReal f    = [];
-        public VectorInt  aptr = [];
-        public VectorInt  jptr = [];
-        public VectorReal x    = [];
-        public VectorReal ans  = [];
+        public VectorReal mat ;
+        public VectorReal f   ;
+        public VectorInt  aptr;
+        public VectorInt  jptr;
+        public VectorReal x   ;
+        public VectorReal ans ;
 
-        public void LoadFromFiles()
+        public HostSlae()
         {
             mat  = Shared.LoadArray<Real>(File.OpenText("../../../../slae/mat"));
             f    = Shared.LoadArray<Real>(File.OpenText("../../../../slae/f"));
@@ -133,7 +133,7 @@ namespace Solvers
         public SparkCL.Memory<Real> x   ;
         public SparkCL.Memory<Real> ans ;
 
-        public void LoadFromFiles()
+        public OclSlae()
         {
             mat  = new SparkCL.Memory<Real>(File.OpenText("../../../../slae/mat"));
             f    = new SparkCL.Memory<Real>(File.OpenText("../../../../slae/f"));
