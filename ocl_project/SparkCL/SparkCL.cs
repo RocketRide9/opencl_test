@@ -11,6 +11,7 @@ using System.Globalization;
 // очереди команд и устройства.
 namespace SparkCL
 {
+    using System.Collections.Generic;
     using SparkOCL;
     static class StarterKit
     {
@@ -86,6 +87,27 @@ namespace SparkCL
             return c - s;
         }
     }
+    
+    static class KernelArgExt
+    {
+        public static void ArgValue(this float val, SparkCL.Kernel kernel, uint index)
+        {
+            kernel.SetArg(index, val);
+        }
+        public static void ArgValue(this int val, SparkCL.Kernel kernel, uint index)
+        {
+            kernel.SetArg(index, val);
+        }
+        public static void ArgValue(this double val, SparkCL.Kernel kernel, uint index)
+        {
+            kernel.SetArg(index, val);
+        }
+        
+        public static void ArgLocalSize(this nuint val, SparkCL.Kernel kernel, uint index)
+        {
+            kernel.SetSize(index, val);
+        }
+    }
 
     class Program
     {
@@ -103,6 +125,41 @@ namespace SparkCL
         }
     }
 
+    class ArgInfo
+    {
+        public bool IsPointer;
+        public KernelArgAddressQualifier Qualifier;
+        public Type DataType;
+
+        public ArgInfo(string typeName, KernelArgAddressQualifier qualifier)
+        {
+            Qualifier = qualifier;
+            int base_end = typeName.LastIndexOf('*');
+            if (base_end == typeName.Length - 1)
+            {
+                IsPointer = true;
+                typeName = typeName.Substring(0, base_end);
+            } else {
+                IsPointer = false;
+            }
+            
+            switch (typeName)
+            {
+                case "float":
+                    DataType = typeof(float);
+                    break;
+                case "double":
+                    DataType = typeof(double);
+                    break;
+                case "int":
+                    DataType = typeof(int);
+                    break;
+                default:
+                    throw new NotImplementedException();
+            }
+        }
+    }
+    
     class Kernel
     {
         SparkOCL.Kernel kernel;
@@ -120,7 +177,7 @@ namespace SparkCL
             Core.KernTime += ev.GetElapsed();
             return ev;
         }
-
+        
         public uint PushArg<T>(
             SparkCL.Memory<T> mem)
         where T: unmanaged, INumber<T>
@@ -160,6 +217,13 @@ namespace SparkCL
             nuint sz)
         {
             kernel.SetSize(idx, sz);
+        }
+        
+        public ArgInfo GetArgInfo(uint arg_index)
+        {
+            var name = kernel.GetArgTypeName(arg_index);
+            var qual = kernel.GetArgAddressQualifier(arg_index);
+            return new ArgInfo(name, qual);
         }
 
         internal Kernel(SparkOCL.Kernel kernel, NDRange globalWork, NDRange localWork)
@@ -253,6 +317,10 @@ namespace SparkCL
             Memory<T> destination
         )
         {
+            if (Count != destination.Count)
+            {
+                throw new Exception("Source and destination sizes doesn't match");
+            }
             Core.queue!.EnqueueCopyBuffer(buffer, destination.buffer, 0, 0, Count, out var ev);
             ev.Wait();
             Core.IOTime += ev.GetElapsed();

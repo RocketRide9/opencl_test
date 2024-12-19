@@ -420,7 +420,7 @@ namespace SparkOCL
             Buffer<T> dst,
             nuint src_offset,
             nuint dst_offset,
-            nuint size,
+            nuint count,
             out Event @event)
         where T : unmanaged
         {
@@ -431,7 +431,7 @@ namespace SparkOCL
                 dst.Handle,
                 src_offset,
                 dst_offset,
-                size,
+                count * (nuint) sizeof(T),
                 0,
                 null,
                 out event_h);
@@ -475,6 +475,75 @@ namespace SparkOCL
         {
             CLHandle.OCL.ReleaseKernel(Handle);
         }
+        
+        unsafe private void GetKernelInfo<Y>(
+            uint arg_index,
+            KernelArgInfo param_name,
+            nuint param_value_size,
+            Y *param_value,
+            nuint *param_value_size_ret)
+        {
+            int err = OCL.GetKernelArgInfo(
+                Handle,
+                arg_index,
+                param_name,
+                param_value_size,
+                param_value,
+                param_value_size_ret);
+                
+            if (err != (int) ErrorCodes.Success)
+            {
+                throw new System.Exception(
+                    $"Failed to get kernel argument info (index = {arg_index}), code: {err}");
+            }
+        }
+        
+        unsafe public string GetArgTypeName(
+            uint arg_index
+        )
+        {
+            nuint size_ret;
+            GetKernelInfo<byte[]>(
+                arg_index,
+                KernelArgInfo.TypeName, 
+                0, null,
+                &size_ret);
+
+            byte[] infoBytes = new byte[size_ret / (nuint)sizeof(byte)];
+            
+            fixed (byte *p_infoBytes = infoBytes)
+            {
+                GetKernelInfo(
+                    arg_index,
+                    KernelArgInfo.TypeName, 
+                    size_ret, p_infoBytes,
+                    null);
+            }
+
+            return Encoding.UTF8.GetString(infoBytes);
+        }
+        
+        unsafe public KernelArgAddressQualifier GetArgAddressQualifier(
+            uint arg_index
+        )
+        {
+            KernelArgAddressQualifier res;
+            
+            // nuint size_ret;
+            // GetKernelInfo<KernelArgAddressQualifier>(
+            //     arg_index,
+            //     KernelArgInfo.AddressQualifier, 
+            //     0, null,
+            //     &size_ret);
+
+            GetKernelInfo<KernelArgAddressQualifier>(
+                arg_index,
+                KernelArgInfo.AddressQualifier, 
+                sizeof(KernelArgAddressQualifier), &res,
+                null);
+
+            return res;
+        }
 
         unsafe public void SetArg<T>(
             uint arg_index,
@@ -495,7 +564,6 @@ namespace SparkOCL
             T arg)
         where T: unmanaged
         {
-
             int err = OCL.SetKernelArg(Handle, arg_index, (nuint)sizeof(T), ref arg);
             if (err != (int) ErrorCodes.Success)
             {
@@ -507,7 +575,6 @@ namespace SparkOCL
             uint arg_index,
             nuint sz)
         {
-
             int err = OCL.SetKernelArg(Handle, arg_index, (nuint)sizeof(float) * sz, null);
             if (err != (int)ErrorCodes.Success)
             {

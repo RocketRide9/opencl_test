@@ -100,11 +100,12 @@ namespace Solvers.Host
                 
                 Real pp1 = Dot(r, r_hat);
                 Real beta = (pp1 / pp) * (alpha / w);
-                
+
                 MyFor(0, x.Length, i =>
                 {
                     p[i] = r[i] + beta * (p[i] - w * nu[i]);
                 });
+
                 pp = pp1;
             }
             return (rr, pp, iter);
