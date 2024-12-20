@@ -23,10 +23,10 @@ namespace HelloWorld
             // axpy_test();
             // return;
 
-            // var s1 = new Solvers.Host.BiCGStab();
-            // s1.SolveAndBreakdown();
+            var s1 = new Solvers.Host.BiCGStab();
+            s1.SolveAndBreakdown();
 
-            // Console.WriteLine();
+            Console.WriteLine();
 
             var s2 = new Solvers.MKL.BiCGStab();
             s2.SolveAndBreakdown();

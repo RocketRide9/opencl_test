@@ -344,6 +344,16 @@ namespace SparkCL
             // return res;
         }
 
+        public double Dot(Memory<double> rhs)
+        {
+            double res = (double)BLAS.dot(
+                (int)this.Count,
+                new ReadOnlySpan<double>(array.Buf, (int)Count),
+                new ReadOnlySpan<double>(rhs.array.Buf, (int)Count)
+            );
+            return res;
+        }
+
         private bool disposedValue;
 
         protected virtual void Dispose(bool disposing)

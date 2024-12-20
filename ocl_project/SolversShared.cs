@@ -6,8 +6,8 @@ using System.IO;
 using System.Numerics;
 using System.Threading.Tasks;
 
-using Real = float;
-using VectorReal = float[];
+using Real = double;
+using VectorReal = double[];
 using VectorInt = int[];
 using System.Collections.Concurrent;
 

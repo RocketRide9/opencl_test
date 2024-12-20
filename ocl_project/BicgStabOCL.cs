@@ -3,7 +3,7 @@ using System.Diagnostics;
 using Quasar.Native;
 using static Solvers.Shared;
 
-using Real = float;
+using Real = double;
 
 namespace Solvers.OpenCL
 {
@@ -18,6 +18,8 @@ namespace Solvers.OpenCL
         SparkCL.Memory<Real> h;
         SparkCL.Memory<Real> s;
         SparkCL.Memory<Real> t;
+        SparkCL.Memory<Real> dotpart;
+        SparkCL.Memory<Real> dotres;
         private bool disposedValue;
 
         public BiCGStab()
@@ -29,6 +31,8 @@ namespace Solvers.OpenCL
             h     = new SparkCL.Memory<Real>(slae.x.Count);
             s     = new SparkCL.Memory<Real>(slae.x.Count);
             t     = new SparkCL.Memory<Real>(slae.x.Count);
+            dotpart=new SparkCL.Memory<Real>(32);
+            dotres= new SparkCL.Memory<Real>(1);
         }
         
         public (Real, Real, int, long) Solve()
@@ -60,6 +64,22 @@ namespace Solvers.OpenCL
                 prepare1.PushArg(f);
                 prepare1.PushArg(x);
 
+            var kernP = solvers.GetKernel(
+                "BiCGSTAB_p",
+                globalWork: new(x.Count),
+                localWork: new(32)
+            );
+                kernP.SetArg(0, p);
+                kernP.SetArg(1, r);
+                kernP.SetArg(2, nu);
+
+            void PExecute(Real _w, Real _beta)
+            {
+                kernP.SetArg(3, _w);
+                kernP.SetArg(4, _beta);
+                kernP.Execute();
+            }
+
             var kernMul = solvers.GetKernel(
                 "MSRMul",
                 globalWork: new(x.Count),
@@ -88,6 +108,32 @@ namespace Solvers.OpenCL
                 kernAxpy.Execute();
             }
             
+            var kern1 = solvers.GetKernel(
+                "Xdot",
+                globalWork: new(x.Count),
+                localWork: new(32)
+            );
+            var kern2 = solvers.GetKernel(
+                "XdotEpilogue",
+                globalWork: new(32),
+                localWork: new(32)
+            );
+            Real DotExecute(SparkCL.Memory<Real> _x, SparkCL.Memory<Real> _y)
+            {
+                kern1.SetArg(0, (uint)_x.Count);
+                kern1.SetArg(1, _x);
+                kern1.SetArg(2, _y);
+                kern1.SetArg(3, dotpart);
+                kern1.Execute();
+
+                kern2.SetArg(0, dotpart);
+                kern2.SetArg(1, dotres);
+                kern2.Execute();
+
+                return dotres[0];
+            }
+            
+            /*
             var kernScale = solvers.GetKernel(
                 "BLAS_scale",
                 globalWork: new(x.Count),
@@ -98,16 +144,9 @@ namespace Solvers.OpenCL
                 kernScale.SetArg(1, _x);
                 kernScale.Execute();
             }
-
+            */
             // BiCGSTAB
             // 1.
-            mat.Write();
-            aptr.Write();
-            jptr.Write();
-            r.Write();
-            p.Write();
-            f.Write();
-            x.Write();
 
             prepare1.Execute();
             r.Read();
@@ -117,6 +156,7 @@ namespace Solvers.OpenCL
             sw_host.Start();
             Real pp = r.Dot(r); // r_hat * r
             sw_host.Stop();
+            //pp = DotExecute(r, r);
             // 4.
             r.CopyTo(p);
             
@@ -139,13 +179,11 @@ namespace Solvers.OpenCL
                 x.CopyTo(h);
                 AxpyExecute(alpha, p, h);
                 
-                
                 // 4.
                 r.CopyTo(s);
                 AxpyExecute(-alpha, nu, s);
 
                 s.Read();
-                h.Read();
 
                 sw_host.Start();
                 Real ss = s.Dot(s);
@@ -174,10 +212,7 @@ namespace Solvers.OpenCL
                 s.CopyTo(r);
                 AxpyExecute(-w, t, r);
                 
-
                 r.Read();
-                x.Read();
-
                 
                 sw_host.Start();
                 rr = r.Dot(r);
@@ -192,18 +227,12 @@ namespace Solvers.OpenCL
                 sw_host.Stop();
 
                 // 13.
-                AxpyExecute(-w, nu, p);
+                PExecute(w, beta);
 
-                // что если объединить два последних действия в одно ядро?
-                ScaleExecute(beta, p);
-
-                AxpyExecute(1f, r, p);
-                p.Read();
-                
-                
                 pp = pp1;
             }
 
+            x.Read();
             return (rr, pp, iter, sw_host.ElapsedMilliseconds);
         }
         
