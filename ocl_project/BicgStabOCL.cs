@@ -1,6 +1,6 @@
 using System;
 using System.Diagnostics;
-
+using Quasar.Native;
 using static Solvers.Shared;
 
 using Real = float;
@@ -65,72 +65,87 @@ namespace Solvers.OpenCL
                 globalWork: new(x.Count),
                 localWork:  new(32)
             );
-                kernMul.PushArg(mat);
-                kernMul.PushArg(aptr);
-                kernMul.PushArg(jptr);
-                kernMul.PushArg((uint)x.Count);
-                kernMul.PushArg(p);
-                kernMul.PushArg(nu);
-
-            var kernXpay = solvers.GetKernel(
-                "BLAS_xpay",
-                globalWork: new(x.Count/4),
-                localWork:  new(32)
-            );
-
-            var kernP = solvers.GetKernel(
-                "BiCGSTAB_p",
+                kernMul.SetArg(0, mat);
+                kernMul.SetArg(1, aptr);
+                kernMul.SetArg(2, jptr);
+                kernMul.SetArg(3, (uint)x.Count);
+            
+            void MulExecute(SparkCL.Memory<Real> _a, SparkCL.Memory<Real> _b){
+                kernMul.SetArg(4, _a);
+                kernMul.SetArg(5, _b);
+                kernMul.Execute();
+            }
+                
+            var kernAxpy = solvers.GetKernel(
+                "BLAS_axpy",
                 globalWork: new(x.Count),
                 localWork:  new(32)
             );
-                kernP.PushArg(p);
-                kernP.PushArg(r);
-                kernP.PushArg(nu);
-                
+            void AxpyExecute(Real _a, SparkCL.Memory<Real> _x, SparkCL.Memory<Real> _y) {
+                kernAxpy.SetArg(0, _a);
+                kernAxpy.SetArg(1, _x);
+                kernAxpy.SetArg(2, _y);
+                kernAxpy.Execute();
+            }
+            
+            var kernScale = solvers.GetKernel(
+                "BLAS_scale",
+                globalWork: new(x.Count),
+                localWork:  new(32)
+            );
+            void ScaleExecute(Real _a, SparkCL.Memory<Real> _x) {
+                kernScale.SetArg(0, _a);
+                kernScale.SetArg(1, _x);
+                kernScale.Execute();
+            }
+
             // BiCGSTAB
+            // 1.
+            mat.Write();
+            aptr.Write();
+            jptr.Write();
+            r.Write();
+            p.Write();
+            f.Write();
+            x.Write();
+
             prepare1.Execute();
-            r.CopyTo(r_hat);
-            r.CopyTo(p);
             r.Read();
+            // 2.
+            r.CopyTo(r_hat);
+            // 3.
+            sw_host.Start();
+            Real pp = r.Dot(r); // r_hat * r
+            sw_host.Stop();
+            // 4.
+            r.CopyTo(p);
+            
             r_hat.Read();
             p.Read();
 
             int iter = 0;
             Real rr = 0;
-
-            sw_host.Start();
-            Real pp = r.Dot(r); // r_hat * r
-            sw_host.Stop();
-
             for (; iter < MAX_ITER; iter++)
             {
-                kernMul.SetArg(4, p);
-                kernMul.SetArg(5, nu);
-                kernMul.Execute();
+                MulExecute(p, nu);
                 nu.Read();
-            
+
                 sw_host.Start();
-                Real rnu = r_hat.Dot(nu);
+                Real rnu = nu.Dot(r_hat);
                 Real alpha = pp / rnu;
                 sw_host.Stop();
-                
+
                 // 3. h = x + alpha*p
-                kernXpay.SetArg(0, h);
-                kernXpay.SetArg(1, x);
-                kernXpay.SetArg(2, alpha);
-                kernXpay.SetArg(3, p);
-                kernXpay.Execute();
-                // 4.
-                kernXpay.SetArg(0, s);
-                kernXpay.SetArg(1, r);
-                kernXpay.SetArg(2, -alpha);
-                kernXpay.SetArg(3, nu);
-                kernXpay.Execute();
+                x.CopyTo(h);
+                AxpyExecute(alpha, p, h);
                 
+                
+                // 4.
+                r.CopyTo(s);
+                AxpyExecute(-alpha, nu, s);
+
                 s.Read();
                 h.Read();
-                // print(s, 5);
-                // return;
 
                 sw_host.Start();
                 Real ss = s.Dot(s);
@@ -141,10 +156,8 @@ namespace Solvers.OpenCL
                     break;
                 }
                 sw_host.Stop();
-                
-                kernMul.SetArg(4, s);
-                kernMul.SetArg(5, t);
-                kernMul.Execute();
+
+                MulExecute(s, t);
                 t.Read();
 
                 sw_host.Start();
@@ -154,22 +167,18 @@ namespace Solvers.OpenCL
                 sw_host.Stop();
 
                 // 8. 
-                kernXpay.SetArg(0, x);
-                kernXpay.SetArg(1, h);
-                kernXpay.SetArg(2, w);
-                kernXpay.SetArg(3, s);
-                kernXpay.Execute();
-                
+                h.CopyTo(x);
+                AxpyExecute(w, s, x);
+
                 // 9.
-                kernXpay.SetArg(0, r);
-                kernXpay.SetArg(1, s);
-                kernXpay.SetArg(2, -w);
-                kernXpay.SetArg(3, t);
-                kernXpay.Execute();
+                s.CopyTo(r);
+                AxpyExecute(-w, t, r);
                 
+
                 r.Read();
                 x.Read();
 
+                
                 sw_host.Start();
                 rr = r.Dot(r);
                 if (rr < EPS)
@@ -177,14 +186,21 @@ namespace Solvers.OpenCL
                     break;
                 }
 
+                // 11-12.
                 Real pp1 = r_hat.Dot(r);
                 Real beta = (pp1 / pp) * (alpha / w);
                 sw_host.Stop();
 
-                kernP.SetArg(3, w);
-                kernP.SetArg(4, beta);
-                kernP.Execute();
+                // 13.
+                AxpyExecute(-w, nu, p);
+
+                // что если объединить два последних действия в одно ядро?
+                ScaleExecute(beta, p);
+
+                AxpyExecute(1f, r, p);
                 p.Read();
+                
+                
                 pp = pp1;
             }
 

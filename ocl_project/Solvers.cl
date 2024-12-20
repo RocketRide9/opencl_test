@@ -207,6 +207,31 @@ kernel void BLAS_xpay
     // надо проверить его ещё и на nvidia
 }
 
+// y += a*x
+kernel void BLAS_axpy
+(
+    const real a,
+    global const real *x,
+    global real *y
+)
+{
+    uint i = get_global_id(0);
+    
+    y[i] += a * x[i];
+}
+
+// y *= a
+kernel void BLAS_scale
+(
+    const real a,
+    global real *y
+)
+{
+    uint i = get_global_id(0);
+    
+    y[i] *= a;
+}
+
 kernel void BiCGSTAB_p
 (
     global real *p,

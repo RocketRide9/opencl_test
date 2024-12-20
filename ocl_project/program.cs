@@ -2,8 +2,9 @@ using Silk.NET.OpenCL;
 using System;
 using System.Diagnostics;
 using System.IO;
+using Solvers;
 
-using Real = System.Double;
+using Real = System.Single;
 // using SparkOCL;
 // using SparkCL;
 
@@ -18,12 +19,15 @@ namespace HelloWorld
         static void Main(string[] args)
         {
             SparkCL.Core.Init();
-            
-            var s1 = new Solvers.Host.BiCGStab();
-            s1.SolveAndBreakdown();
-            
-            Console.WriteLine();
-            
+
+            // axpy_test();
+            // return;
+
+            // var s1 = new Solvers.Host.BiCGStab();
+            // s1.SolveAndBreakdown();
+
+            // Console.WriteLine();
+
             var s2 = new Solvers.MKL.BiCGStab();
             s2.SolveAndBreakdown();
             
@@ -31,6 +35,34 @@ namespace HelloWorld
             
             using var s3 = new Solvers.OpenCL.BiCGStab();
             s3.SolveAndBreakdown();
+        }
+        
+        static void axpy_test()
+        {
+            var x = new SparkCL.Memory<float>([1, 2, 3, 4, 5, 6, 7, 8]);
+            var y = new SparkCL.Memory<float>([1, 2, 3, 4, 5, 6, 7, 8]);
+            var z = new SparkCL.Memory<float>([1, 2, 3, 4, 5, 6, 7, 8]);
+            var alpha = 5f;
+
+            var solvers = new SparkCL.Program("Solvers.cl");
+            var kernAxpy = solvers.GetKernel(
+                "BLAS_axpy",
+                globalWork: new(x.Count),
+                localWork:  new(2)
+            );
+            void AxpyExecute(Real _a, SparkCL.Memory<Real> _x, SparkCL.Memory<Real> _y) {
+                kernAxpy.SetArg(0, _a);
+                kernAxpy.SetArg(1, _x);
+                kernAxpy.SetArg(2, _y);
+                kernAxpy.Execute();
+            }
+
+            AxpyExecute(alpha, x, z);
+            z.Read();
+            for (int i = 0; i < (int)z.Count; i++)
+            {
+                Console.WriteLine(z[i]);
+            }
         }
 
         static void DOT()

@@ -102,6 +102,38 @@ namespace Solvers
 
             return array;
         }
+        
+        public static void PrintArray<T>(SparkCL.Memory<T> mem, int count = 5)
+        where T: unmanaged, INumber<T> 
+        {
+            for (int i = 0; i < count; i++)
+            {
+                Console.WriteLine(mem[i]);
+            }
+            
+            Console.WriteLine("- - -");
+            
+            for (int i = (int)mem.Count - count; i < (int)mem.Count; i++)
+            {
+                Console.WriteLine(mem[i]);
+            }
+        }
+        
+        public static void PrintArray<T>(T[] mem, int count = 5)
+        where T: unmanaged, INumber<T> 
+        {
+            for (int i = 0; i < count; i++)
+            {
+                Console.WriteLine(mem[i]);
+            }
+            
+            Console.WriteLine("- - -");
+            
+            for (int i = mem.Length - count; i < mem.Length; i++)
+            {
+                Console.WriteLine(mem[i]);
+            }
+        }
     }
     
     public class HostSlae
