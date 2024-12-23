@@ -7,7 +7,7 @@ using Solvers;
 
 var summaries = BenchmarkSwitcher.FromAssembly(typeof(TestCPU).Assembly).RunAll();
 
-[SimpleJob(RuntimeMoniker.Net90)]
+[SimpleJob(RuntimeMoniker.Net80)]
 public class TestCPU
 {
     float[] x;
