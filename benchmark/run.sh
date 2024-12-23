@@ -2,13 +2,13 @@
 
 set -euxo pipefail
 
-BIN_MAME="ocl_test"
+BIN_MAME="benchmark"
 DOTNET_VER="net8.0"
 
 # Ручная сборка и запуск программы из директории с исполняемым файлом
 # если аргумент не указан - собрать и запустить в релизной конфигурации
 if [ $# -eq 0 ]; then
-    (cd "$(dirname "$0")" && dotnet build --configuration Release && cd "./bin/Release/$DOTNET_VER" && "./$BIN_MAME")
+    dotnet build --configuration Release && (cd "$(dirname "$0")" && cd "./bin/Release/$DOTNET_VER" && "./$BIN_MAME")
     exit 0
 elif [ $# -gt 1 ]; then
     echo "Ожидается один аргумент, либо нисколько. Получено: $#"
@@ -20,5 +20,3 @@ if [[ "$1" == "--debug" ]]; then
 elif [[ "$1" == "--release" ]]; then
     dotnet build --configuration Release && (cd "$(dirname "$0")" && cd "./bin/Release/$DOTNET_VER" && "./$BIN_MAME")
 fi
-
-exit 0

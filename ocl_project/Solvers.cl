@@ -1,5 +1,5 @@
-#define real float
-#define real4 float4
+#define real double
+#define real4 double4
 
 kernel void MSRMul(
     global const real *mat,
@@ -101,76 +101,6 @@ kernel void dot_kernel
     if ( jj == 0 ) *res = work[0];
 }
 
-kernel void LOS_prepare1
-(
-    // матрица
-    global const real *mat,
-    global const int *aptr,
-    global const int *jptr,
-    const int n,
-    // правая часть, массив будет использован для хранения z
-    global real *f,
-    // передаётся нач. приближ., записывается результат
-    global const real *x,
-    // вспомогательные массивы
-    global real *r
-)
-{
-    uint idx = get_global_id(0);
-
-    r[idx] = MSRMulSingle(mat, aptr, jptr, n, x); // r = Ax
-    r[idx] = f[idx] - r[idx]; // r = f - Ax
-
-    f[idx] = r[idx]; // z = r.clone()
-}
-
-kernel void LOS_prepare2
-(
-    // матрица
-    global const real *mat,
-    global const int *aptr,
-    global const int *jptr,
-    const int n,
-    // вспомогательные массивы
-    global const real *r,
-    global real *p
-)
-{
-    uint idx = get_global_id(0);
-
-    p[idx] = MSRMulSingle(mat, aptr, jptr, n, r); // p = Ar
-}
-
-kernel void LOS_xr
-(
-    global const float *f,
-    global const float *p,
-    const real alpha,
-    global float *x,
-    global float *r
-)
-{
-    uint i = get_global_id(0);
-
-    x[i] += (alpha * f[i]);
-    r[i] -= (alpha * p[i]);
-}
-
-kernel void LOS_fp
-(
-    global const float *r,
-    global const float *ar,
-    const real beta,
-    global float *f,
-    global float *p
-)
-{
-    uint i = get_global_id(0);
-
-    f[i] = r[i] + beta * f[i];
-    p[i] = ar[i] + beta * p[i];
-}
-
 kernel void BiCGSTAB_prepare1
 (
     // матрица
@@ -190,21 +120,29 @@ kernel void BiCGSTAB_prepare1
     r[i] = f[i] - MSRMulSingle(mat, aptr, jptr, n, x);
 }
 
-// X Plus A*Y
-kernel void BLAS_xpay
+// y += a*x
+kernel void BLAS_axpy
 (
-    global real4 *res,
-    global real4 *x,
     const real a,
-    global const real4 *y
+    global const real *x,
+    global real *y
 )
 {
     uint i = get_global_id(0);
     
-    res[i] = x[i] + a * y[i];
-    // res[i] = mad(a, y[i], x[i]);
-    // на практие mad не показал прирост в производительности
-    // надо проверить его ещё и на nvidia
+    y[i] += a * x[i];
+}
+
+// y *= a
+kernel void BLAS_scale
+(
+    const real a,
+    global real *y
+)
+{
+    uint i = get_global_id(0);
+    
+    y[i] *= a;
 }
 
 kernel void BiCGSTAB_p
@@ -219,4 +157,72 @@ kernel void BiCGSTAB_p
     uint i = get_global_id(0);
     
     p[i] = r[i] + beta * (p[i] - w*nu[i]);
+}
+
+// код взят отсюда https://github.com/CNugteren/CLBlast/blob/bd96941ac0633e8e7d09fd2475e0279be370b1e1/src/kernels/level1/xdot.opencl
+
+#define WGS1 32
+#define WGS2 32
+
+kernel
+void Xdot(const int n,
+          const global real* restrict xgm,
+          const global real* restrict ygm,
+          global real* output)
+{
+    local real lm[WGS1];
+    const int lid = get_local_id(0);
+    const int wgid = get_group_id(0);
+    const int num_groups = get_num_groups(0);
+    // Performs multiplication and the first steps of the reduction
+    real acc = 0;
+    int id = wgid*WGS1 + lid;
+    while (id < n) {
+        real x = xgm[id];
+        real y = ygm[id];
+        acc += x * y;
+        id += WGS1*num_groups;
+    }
+    lm[lid] = acc;
+    barrier(CLK_LOCAL_MEM_FENCE);
+    
+    // Performs reduction in local memory
+    for (int s=WGS1/2; s>0; s = s >> 1) {
+        if (lid < s) {
+            lm[lid] = lm[lid] + lm[lid + s];
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+    }
+    
+    // Stores the per-workgroup result
+    if (lid == 0) {
+        output[wgid] = lm[0];
+    }
+}
+
+
+// The epilogue reduction kernel, performing the final bit of the sum operation. This kernel has to
+// be launched with a single workgroup only.
+kernel
+void XdotEpilogue(const global real* restrict input,
+                  global real* dot) {
+    local real lm[WGS2];
+    const int lid = get_local_id(0);
+    
+    // Performs the first step of the reduction while loading the data
+    lm[lid] = input[lid] + input[lid + WGS2];
+    barrier(CLK_LOCAL_MEM_FENCE);
+    
+    // Performs reduction in local memory
+    for (int s=WGS2/2; s>0; s=s>>1) {
+        if (lid < s) {
+            lm[lid] += lm[lid + s];
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+    }
+    
+    // Stores the final result
+    if (lid == 0) {
+        dot[0] = lm[0];
+    }
 }

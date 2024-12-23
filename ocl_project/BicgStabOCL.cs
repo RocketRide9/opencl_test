@@ -1,9 +1,9 @@
 using System;
 using System.Diagnostics;
-
+using Quasar.Native;
 using static Solvers.Shared;
 
-using Real = float;
+using Real = double;
 
 namespace Solvers.OpenCL
 {
@@ -18,6 +18,8 @@ namespace Solvers.OpenCL
         SparkCL.Memory<Real> h;
         SparkCL.Memory<Real> s;
         SparkCL.Memory<Real> t;
+        SparkCL.Memory<Real> dotpart;
+        SparkCL.Memory<Real> dotres;
         private bool disposedValue;
 
         public BiCGStab()
@@ -29,19 +31,18 @@ namespace Solvers.OpenCL
             h     = new SparkCL.Memory<Real>(slae.x.Count);
             s     = new SparkCL.Memory<Real>(slae.x.Count);
             t     = new SparkCL.Memory<Real>(slae.x.Count);
+            dotpart=new SparkCL.Memory<Real>(32*2);
+            dotres= new SparkCL.Memory<Real>(1);
         }
         
-        public (Real, Real, int, long) Solve()
+        public (Real, Real, int) Solve()
         {
             // Вынос векторов в текущую область видимости
-            using var mat  = slae.mat;
-            using var f    = slae.f;
-            using var aptr = slae.aptr;
-            using var jptr = slae.jptr;
-                  var x    = slae.x;
-                  var ans  = slae.ans;
-
-            var sw_host = new Stopwatch();
+            var mat  = slae.mat;
+            var f    = slae.f;
+            var aptr = slae.aptr;
+            var jptr = slae.jptr;
+            var x    = slae.x;
 
             // BiCGSTAB
             var solvers = new SparkCL.Program("Solvers.cl");
@@ -60,142 +61,162 @@ namespace Solvers.OpenCL
                 prepare1.PushArg(f);
                 prepare1.PushArg(x);
 
+            var kernP = solvers.GetKernel(
+                "BiCGSTAB_p",
+                globalWork: new(x.Count),
+                localWork: new(32)
+            );
+                kernP.SetArg(0, p);
+                kernP.SetArg(1, r);
+                kernP.SetArg(2, nu);
+
+            void PExecute(Real _w, Real _beta)
+            {
+                kernP.SetArg(3, _w);
+                kernP.SetArg(4, _beta);
+                kernP.Execute();
+            }
+
             var kernMul = solvers.GetKernel(
                 "MSRMul",
                 globalWork: new(x.Count),
                 localWork:  new(32)
             );
-                kernMul.PushArg(mat);
-                kernMul.PushArg(aptr);
-                kernMul.PushArg(jptr);
-                kernMul.PushArg((uint)x.Count);
-                kernMul.PushArg(p);
-                kernMul.PushArg(nu);
-
-            var kernXpay = solvers.GetKernel(
-                "BLAS_xpay",
-                globalWork: new(x.Count/4),
-                localWork:  new(32)
-            );
-
-            var kernP = solvers.GetKernel(
-                "BiCGSTAB_p",
+                kernMul.SetArg(0, mat);
+                kernMul.SetArg(1, aptr);
+                kernMul.SetArg(2, jptr);
+                kernMul.SetArg(3, (uint)x.Count);
+            
+            void MulExecute(SparkCL.Memory<Real> _a, SparkCL.Memory<Real> _b){
+                kernMul.SetArg(4, _a);
+                kernMul.SetArg(5, _b);
+                kernMul.Execute();
+            }
+                
+            var kernAxpy = solvers.GetKernel(
+                "BLAS_axpy",
                 globalWork: new(x.Count),
                 localWork:  new(32)
             );
-                kernP.PushArg(p);
-                kernP.PushArg(r);
-                kernP.PushArg(nu);
-                
+            void AxpyExecute(Real _a, SparkCL.Memory<Real> _x, SparkCL.Memory<Real> _y) {
+                kernAxpy.SetArg(0, _a);
+                kernAxpy.SetArg(1, _x);
+                kernAxpy.SetArg(2, _y);
+                kernAxpy.Execute();
+            }
+            
+            var kern1 = solvers.GetKernel(
+                "Xdot",
+                globalWork: new(32*32*2),
+                localWork: new(32)
+            );
+            var kern2 = solvers.GetKernel(
+                "XdotEpilogue",
+                globalWork: new(32),
+                localWork: new(32)
+            );
+            Real DotExecute(SparkCL.Memory<Real> _x, SparkCL.Memory<Real> _y)
+            {
+                kern1.SetArg(0, (uint)_x.Count);
+                kern1.SetArg(1, _x);
+                kern1.SetArg(2, _y);
+                kern1.SetArg(3, dotpart);
+                kern1.Execute();
+
+                kern2.SetArg(0, dotpart);
+                kern2.SetArg(1, dotres);
+                kern2.Execute();
+                dotres.Read();
+
+                return dotres[0];
+            }
+            
+            /*
+            var kernScale = solvers.GetKernel(
+                "BLAS_scale",
+                globalWork: new(x.Count),
+                localWork:  new(32)
+            );
+            void ScaleExecute(Real _a, SparkCL.Memory<Real> _x) {
+                kernScale.SetArg(0, _a);
+                kernScale.SetArg(1, _x);
+                kernScale.Execute();
+            }
+            */
+
             // BiCGSTAB
+            // 1.
             prepare1.Execute();
+            // 2.
             r.CopyTo(r_hat);
+            // 3.
+            Real pp = DotExecute(r, r); // r_hat * r
+            // 4.
             r.CopyTo(p);
-            r.Read();
-            r_hat.Read();
-            p.Read();
 
             int iter = 0;
             Real rr = 0;
-
-            sw_host.Start();
-            Real pp = r.Dot(r); // r_hat * r
-            sw_host.Stop();
-
             for (; iter < MAX_ITER; iter++)
             {
-                kernMul.SetArg(4, p);
-                kernMul.SetArg(5, nu);
-                kernMul.Execute();
-                nu.Read();
-            
-                sw_host.Start();
-                Real rnu = r_hat.Dot(nu);
-                Real alpha = pp / rnu;
-                sw_host.Stop();
-                
-                // 3. h = x + alpha*p
-                kernXpay.SetArg(0, h);
-                kernXpay.SetArg(1, x);
-                kernXpay.SetArg(2, alpha);
-                kernXpay.SetArg(3, p);
-                kernXpay.Execute();
-                // 4.
-                kernXpay.SetArg(0, s);
-                kernXpay.SetArg(1, r);
-                kernXpay.SetArg(2, -alpha);
-                kernXpay.SetArg(3, nu);
-                kernXpay.Execute();
-                
-                s.Read();
-                h.Read();
-                // print(s, 5);
-                // return;
+                MulExecute(p, nu);
 
-                sw_host.Start();
-                Real ss = s.Dot(s);
+                Real rnu = DotExecute(r_hat, nu);
+                Real alpha = pp / rnu;
+
+                // 3. h = x + alpha*p
+                x.CopyTo(h);
+                AxpyExecute(alpha, p, h);
+                
+                // 4.
+                r.CopyTo(s);
+                AxpyExecute(-alpha, nu, s);
+
+                Real ss = DotExecute(s, s);
                 if (ss < EPS)
                 {
-                    x.Dispose();
-                    x = h;
+                    (h, slae.x) = (x, h);
                     break;
                 }
-                sw_host.Stop();
-                
-                kernMul.SetArg(4, s);
-                kernMul.SetArg(5, t);
-                kernMul.Execute();
-                t.Read();
 
-                sw_host.Start();
-                Real ts = t.Dot(s);
-                Real tt = t.Dot(t);
+                MulExecute(s, t);
+
+                Real ts = DotExecute(s, t);
+                Real tt = DotExecute(t, t);
                 Real w = ts / tt;
-                sw_host.Stop();
 
                 // 8. 
-                kernXpay.SetArg(0, x);
-                kernXpay.SetArg(1, h);
-                kernXpay.SetArg(2, w);
-                kernXpay.SetArg(3, s);
-                kernXpay.Execute();
-                
-                // 9.
-                kernXpay.SetArg(0, r);
-                kernXpay.SetArg(1, s);
-                kernXpay.SetArg(2, -w);
-                kernXpay.SetArg(3, t);
-                kernXpay.Execute();
-                
-                r.Read();
-                x.Read();
+                h.CopyTo(x);
+                AxpyExecute(w, s, x);
 
-                sw_host.Start();
-                rr = r.Dot(r);
+                // 9.
+                s.CopyTo(r);
+                AxpyExecute(-w, t, r);
+                
+                rr = DotExecute(r, r);
                 if (rr < EPS)
                 {
                     break;
                 }
 
-                Real pp1 = r_hat.Dot(r);
+                // 11-12.
+                Real pp1 = DotExecute(r, r_hat);
                 Real beta = (pp1 / pp) * (alpha / w);
-                sw_host.Stop();
 
-                kernP.SetArg(3, w);
-                kernP.SetArg(4, beta);
-                kernP.Execute();
-                p.Read();
+                // 13.
+                PExecute(w, beta);
+
                 pp = pp1;
             }
 
-            return (rr, pp, iter, sw_host.ElapsedMilliseconds);
+             x.Read();
+            return (rr, pp, iter);
         }
         
         public void SolveAndBreakdown()
         {
             var sw_ocl = new Stopwatch();
             sw_ocl.Start();
-            var (rr, pp, iter, hostTime) = Solve();
+            var (rr, pp, iter) = Solve();
             sw_ocl.Stop();
 
             var x = slae.x;
@@ -213,20 +234,19 @@ namespace Solvers.OpenCL
             Console.WriteLine($"pp = {pp}");
             Console.WriteLine($"max err. = {max_err}");
             ulong overhead = (ulong)sw_ocl.ElapsedMilliseconds
-                - (SparkCL.Core.IOTime + SparkCL.Core.KernTime) / 1_000_000 - (ulong)hostTime;
-            Console.WriteLine($"Итераций: {iter}");
+                - (SparkCL.Core.IOTime + SparkCL.Core.KernTime) / 1_000_000;
+            Console.WriteLine($"Итерации: {iter}");
             Console.WriteLine($"BiCGSTAB с OpenCL: {sw_ocl.ElapsedMilliseconds}мс");
             Console.WriteLine($"Время на операции:");
             ulong ioTime = SparkCL.Core.IOTime / 1_000_000;
             if (ioTime < 1)
             {
-                Console.WriteLine($"IO: <1мс");
+                Console.WriteLine($"\tIO: <1мс");
             } else {
-                Console.WriteLine($"IO: {ioTime}мс");
+                Console.WriteLine($"\tIO: {ioTime}мс");
             }
-            Console.WriteLine($"Код OpenCL: {SparkCL.Core.KernTime/1_000_000}мс");
-            Console.WriteLine($"Вычисления на хосте: {hostTime}мс");
-            Console.WriteLine($"Накладные расходы: {overhead}мс");
+            Console.WriteLine($"\tКод OpenCL: {SparkCL.Core.KernTime/1_000_000}мс");
+            Console.WriteLine($"\tНакладные расходы: {overhead}мс");
         }
 
         protected virtual void Dispose(bool disposing)
@@ -245,6 +265,8 @@ namespace Solvers.OpenCL
                 h.Dispose();
                 s.Dispose();
                 t.Dispose();
+                dotpart.Dispose();
+                dotres.Dispose();
                 // TODO: освободить неуправляемые ресурсы (неуправляемые объекты) и переопределить метод завершения
                 // TODO: установить значение NULL для больших полей
                 disposedValue = true;

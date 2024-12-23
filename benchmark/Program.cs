@@ -2,28 +2,50 @@
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Running;
+using Quasar.Native;
+using Solvers;
 
 var summaries = BenchmarkSwitcher.FromAssembly(typeof(TestCPU).Assembly).RunAll();
 
-[SimpleJob(RuntimeMoniker.Net80)]
+[SimpleJob(RuntimeMoniker.Net90)]
 public class TestCPU
 {
-    Solvers.MKL.BiCGStab mkl;
-    Solvers.OpenCL.BiCGStab ocl;
+    float[] x;
+    float[] y;
+    float[] z;
+    
+    [Params(2000000, 8000000)]
+    public int N;
 
     [GlobalSetup]
     public void Setup()
     {
-        SparkCL.Core.Init();
-        Console.WriteLine(Directory.GetCurrentDirectory());
-
-        mkl = new Solvers.MKL.BiCGStab();
-        ocl = new Solvers.OpenCL.BiCGStab();
+        var rnd = new Random();
+        x = new float[N];
+        y = new float[N];
+        z = new float[N];
+    
+        for(int i = 0; i < N; i++)
+        {
+            x[i] = rnd.NextSingle();
+            y[i] = rnd.NextSingle();
+        }
     }
+    
     [Benchmark]
-    public (float, float, int) SolveMKL() => mkl.Solve();
+    public void MKL()
+    {
+        x.CopyTo(z, 0);
+        BLAS.axpy(x.Length, -1, y, z);
+    }
 
-    [Benchmark (Baseline =true)]
-    public (float, float, int, long) SolveOCL() => ocl.Solve();
+    [Benchmark (Baseline = true)]
+    public void CSharp()
+    {
+        Shared.MyFor(0, x.Length, i =>
+        {
+            z[i] = x[i] - y[i];
+        });
+    }
 
 }

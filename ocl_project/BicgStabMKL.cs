@@ -4,8 +4,8 @@ using Quasar.Native;
 
 using static Solvers.Shared;
 
-using Real = float;
-using VectorReal = float[];
+using Real = double;
+using VectorReal = double[];
 
 namespace Solvers.MKL
 {
@@ -43,33 +43,32 @@ namespace Solvers.MKL
             var ans  = slae.ans;
             
             // BiCGSTAB
+            // 1.
             MSRMul(mat, aptr, jptr, x.Length, x, t);
-            MyFor(0, x.Length, i =>
-            {
-                r[i] = f[i] - t[i];
-            });
+            f.CopyTo(r, 0);
+            BLAS.axpy(x.Length, -1, t, r);
+            // 2.
             r.CopyTo(r_hat, 0);
+            // 3.
+            Real pp = (Real)BLAS.dot(x.Length, r, r); // r_hat * r
+            // 4.
             r.CopyTo(p, 0);
+            
             int iter = 0;
             Real rr = 0;
-            
-            Real pp = (Real)BLAS.dot(x.Length, r, r); // r_hat * r
-            
             for (; iter < MAX_ITER; iter++)
             {
                 MSRMul(mat, aptr, jptr, x.Length, p, nu);
                 
                 Real rnu = (Real)BLAS.dot(x.Length, nu, r_hat);
                 Real alpha = pp / rnu;
+
+                x.CopyTo(h, 0);
+                BLAS.axpy(x.Length, alpha, p, h);
                 
-                MyFor(0, x.Length, i =>
-                {
-                    h[i] = x[i] + alpha * p[i];
-                });
-                MyFor(0, x.Length, i =>
-                {
-                    s[i] = r[i] - alpha * nu[i];
-                });
+
+                r.CopyTo(s, 0);
+                BLAS.axpy(x.Length, -alpha, nu, s);
 
                 Real ss = (Real)BLAS.dot(x.Length, s, s);
                 if (ss < EPS)
@@ -83,15 +82,12 @@ namespace Solvers.MKL
                 Real ts = (Real)BLAS.dot(x.Length, s, t);
                 Real tt = (Real)BLAS.dot(x.Length, t, t);
                 Real w = ts / tt;
-                
-                MyFor(0, x.Length, i =>
-                {
-                    x[i] = h[i] + w * s[i];
-                });
-                MyFor(0, x.Length, i =>
-                {
-                    r[i] = s[i] - w * t[i];
-                });
+
+                h.CopyTo(x, 0);
+                BLAS.axpy(x.Length, w, s, x);
+
+                s.CopyTo(r, 0);
+                BLAS.axpy(x.Length, -w, t, r);
 
                 rr = (Real)BLAS.dot(x.Length, r, r);
                 if (rr < EPS)
@@ -102,10 +98,10 @@ namespace Solvers.MKL
                 Real pp1 = (Real)BLAS.dot(x.Length, r, r_hat);
                 Real beta = (pp1 / pp) * (alpha / w);
                 
-                MyFor(0, x.Length, i =>
-                {
-                    p[i] = r[i] + beta * (p[i] - w * nu[i]);
-                });
+                BLAS.axpy(x.Length, -w, nu, p);
+                BLAS.scal(x.Length, beta, p);
+                BLAS.axpy(x.Length, 1, r, p);
+
                 pp = pp1;
             }
             return (rr, pp, iter);

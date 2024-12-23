@@ -54,28 +54,6 @@ namespace SparkCL
         }
     }
 
-    /*
-    class Device
-    {
-        static Context context;
-        static CommandQueue queue;
-        static SparkOCL.Device device;
-
-        public Device()
-        {
-            context = Context.FromType(DeviceType.Gpu);
-
-            Platform.Get(out var platforms);
-            var platform = platforms[0];
-
-            platform.GetDevices(DeviceType.Gpu, out var devices);
-            device = devices[0];
-
-            queue = new CommandQueue(context, device);
-        }
-    }
-    */
-
     public static class EventExt
     {
         public static ulong GetElapsed(this SparkOCL.Event @event)
@@ -84,6 +62,27 @@ namespace SparkCL
             var c = @event.GetProfilingInfo(ProfilingInfo.End);
 
             return c - s;
+        }
+    }
+    
+    static class KernelArgExt
+    {
+        public static void ArgValue(this float val, SparkCL.Kernel kernel, uint index)
+        {
+            kernel.SetArg(index, val);
+        }
+        public static void ArgValue(this int val, SparkCL.Kernel kernel, uint index)
+        {
+            kernel.SetArg(index, val);
+        }
+        public static void ArgValue(this double val, SparkCL.Kernel kernel, uint index)
+        {
+            kernel.SetArg(index, val);
+        }
+        
+        public static void ArgLocalSize(this nuint val, SparkCL.Kernel kernel, uint index)
+        {
+            kernel.SetSize(index, val);
         }
     }
 
@@ -103,6 +102,41 @@ namespace SparkCL
         }
     }
 
+    class ArgInfo
+    {
+        public bool IsPointer;
+        public KernelArgAddressQualifier Qualifier;
+        public Type DataType;
+
+        public ArgInfo(string typeName, KernelArgAddressQualifier qualifier)
+        {
+            Qualifier = qualifier;
+            int base_end = typeName.LastIndexOf('*');
+            if (base_end == typeName.Length - 1)
+            {
+                IsPointer = true;
+                typeName = typeName.Substring(0, base_end);
+            } else {
+                IsPointer = false;
+            }
+            
+            switch (typeName)
+            {
+                case "float":
+                    DataType = typeof(float);
+                    break;
+                case "double":
+                    DataType = typeof(double);
+                    break;
+                case "int":
+                    DataType = typeof(int);
+                    break;
+                default:
+                    throw new NotImplementedException();
+            }
+        }
+    }
+    
     class Kernel
     {
         SparkOCL.Kernel kernel;
@@ -120,7 +154,7 @@ namespace SparkCL
             Core.KernTime += ev.GetElapsed();
             return ev;
         }
-
+        
         public uint PushArg<T>(
             SparkCL.Memory<T> mem)
         where T: unmanaged, INumber<T>
@@ -160,6 +194,13 @@ namespace SparkCL
             nuint sz)
         {
             kernel.SetSize(idx, sz);
+        }
+        
+        public ArgInfo GetArgInfo(uint arg_index)
+        {
+            var name = kernel.GetArgTypeName(arg_index);
+            var qual = kernel.GetArgAddressQualifier(arg_index);
+            return new ArgInfo(name, qual);
         }
 
         internal Kernel(SparkOCL.Kernel kernel, NDRange globalWork, NDRange localWork)
@@ -253,26 +294,32 @@ namespace SparkCL
             Memory<T> destination
         )
         {
+            if (Count != destination.Count)
+            {
+                throw new Exception("Source and destination sizes doesn't match");
+            }
             Core.queue!.EnqueueCopyBuffer(buffer, destination.buffer, 0, 0, Count, out var ev);
             ev.Wait();
-            Core.IOTime += ev.GetElapsed();
             return ev;
         }
 
-        public T Dot(Memory<T> rhs)
+        public float Dot(Memory<float> rhs)
         {
-            // float res = (float)BLAS.dot(
-            //     (int) this.Count,
-            //     new ReadOnlySpan<float>(    array.Buf, (int)Count),
-            //     new ReadOnlySpan<float>(rhs.array.Buf, (int)Count)
-            // );
-            // return res;
+            float res = (float)BLAS.dot(
+                (int) this.Count,
+                new ReadOnlySpan<float>(    array.Buf, (int)Count),
+                new ReadOnlySpan<float>(rhs.array.Buf, (int)Count)
+            );
+            return res;
+        }
 
-            T res = default;
-            for (int i = 0; i < (int)Count; i++)
-            {
-                res += this[i] * rhs[i];
-            }
+        public double Dot(Memory<double> rhs)
+        {
+            double res = (double)BLAS.dot(
+                (int)this.Count,
+                new ReadOnlySpan<double>(array.Buf, (int)Count),
+                new ReadOnlySpan<double>(rhs.array.Buf, (int)Count)
+            );
             return res;
         }
 

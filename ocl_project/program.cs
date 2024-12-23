@@ -2,8 +2,10 @@ using Silk.NET.OpenCL;
 using System;
 using System.Diagnostics;
 using System.IO;
+using Solvers;
 
 using Real = System.Double;
+using System.Linq;
 // using SparkOCL;
 // using SparkCL;
 
@@ -18,12 +20,15 @@ namespace HelloWorld
         static void Main(string[] args)
         {
             SparkCL.Core.Init();
-            
-            var s1 = new Solvers.Host.BiCGStab();
+
+            // axpy_test();
+            // return;
+
+             var s1 = new Solvers.Host.BiCGStab();
             s1.SolveAndBreakdown();
-            
+
             Console.WriteLine();
-            
+
             var s2 = new Solvers.MKL.BiCGStab();
             s2.SolveAndBreakdown();
             
@@ -31,6 +36,51 @@ namespace HelloWorld
             
             using var s3 = new Solvers.OpenCL.BiCGStab();
             s3.SolveAndBreakdown();
+        }
+        
+        static void axpy_test()
+        {
+            var arr = Enumerable.Range(1, 256).Select(i => (Real)0.5).ToArray();
+            var x           = new SparkCL.Memory<Real>(arr);
+            var y           = new SparkCL.Memory<Real>(arr);
+            var z           = new SparkCL.Memory<Real>(arr);
+            var dotpart     = new SparkCL.Memory<Real>(32*2);
+            var dotres      = new SparkCL.Memory<Real>(1);
+
+            var solvers = new SparkCL.Program("Solvers.cl");
+            var kern1 = solvers.GetKernel(
+                "Xdot",
+                globalWork: new(32*32*2),
+                localWork: new(32)
+            );
+            var kern2 = solvers.GetKernel(
+                "XdotEpilogue",
+                globalWork: new(32),
+                localWork: new(32)
+            );
+            Real DotExecute(SparkCL.Memory<Real> _x, SparkCL.Memory<Real> _y)
+            {
+                kern1.SetArg(0, (uint)_x.Count);
+                kern1.SetArg(1, _x);
+                kern1.SetArg(2, _y);
+                kern1.SetArg(3, dotpart);
+                kern1.Execute();
+
+                kern2.SetArg(0, dotpart);
+                kern2.SetArg(1, dotres);
+                kern2.Execute();
+
+                dotres.Read();
+                return dotres[0];
+            }
+
+            var res = DotExecute(x, x);
+            // z.Read();1
+            Console.WriteLine(res);
+            // for (int i = 0; i < (int)z.Count; i++)
+            // {
+            //     Console.WriteLine(z[i]);
+            // }
         }
 
         static void DOT()

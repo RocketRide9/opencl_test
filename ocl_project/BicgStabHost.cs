@@ -3,8 +3,8 @@ using System.Diagnostics;
 
 using static Solvers.Shared;
 
-using Real = float;
-using VectorReal = float[];
+using Real = double;
+using VectorReal = double[];
 
 namespace Solvers.Host
 {
@@ -42,18 +42,21 @@ namespace Solvers.Host
             var ans  = slae.ans;
             
             // BiCGSTAB
+            // 1.
             MSRMul(mat, aptr, jptr, x.Length, x, t);
             MyFor(0, x.Length, i =>
             {
                 r[i] = f[i] - t[i];
             });
+            // 2.
             r.CopyTo(r_hat, 0);
-            r.CopyTo(p, 0);
-            int iter = 0;
-            Real rr = 0;
-            
+            // 3.
             Real pp = Dot(r, r); // r_hat * r
+            // 4.
+            r.CopyTo(p, 0);
             
+            int iter = 0;
+            Real rr = 0;        
             for (; iter < MAX_ITER; iter++)
             {
                 MSRMul(mat, aptr, jptr, x.Length, p, nu);
@@ -100,11 +103,12 @@ namespace Solvers.Host
                 
                 Real pp1 = Dot(r, r_hat);
                 Real beta = (pp1 / pp) * (alpha / w);
-                
+
                 MyFor(0, x.Length, i =>
                 {
                     p[i] = r[i] + beta * (p[i] - w * nu[i]);
                 });
+
                 pp = pp1;
             }
             return (rr, pp, iter);
