@@ -1,3 +1,5 @@
+#define DEBUG_TIME
+
 using Silk.NET.OpenCL;
 using Quasar.Native;
 
@@ -5,9 +7,10 @@ using System;
 using System.Numerics;
 using System.IO;
 using System.Globalization;
+using System.Collections.Generic;
 
 // идея сократить область применения до вычисления на одном устройстве.
-// это должно упростить использования OpenCL, абстрагируя понятия контекста,
+// это должно упростить использование OpenCL, абстрагируя понятия контекста,
 // очереди команд и устройства.
 namespace SparkCL
 {
@@ -37,9 +40,10 @@ namespace SparkCL
         static internal Context? context;
         static internal CommandQueue? queue;
         static internal SparkOCL.Device? device;
-        static public ulong IOTime { get; internal set; } = 0;
-        static public ulong KernTime { get; internal set; } = 0;
 
+        static public List<Event> IOEvents = new(32);
+        static public List<Event> KernEvents = new(32);
+        
         static public void Init()
         {
             context = Context.FromType(DeviceType.Gpu);
@@ -51,6 +55,29 @@ namespace SparkCL
             device = devices[0];
 
             queue = new CommandQueue(context, device);
+        }
+        
+        // Должна быть вызвана после завершения всех операций на устройстве
+        static public (ulong IOTime, ulong KernTime) MeasureTime()
+        {
+            ulong IO = 0;
+            ulong Kern = 0;
+            
+            foreach (var ev in IOEvents)
+            {
+                IO += ev.GetElapsed();
+            }
+            foreach (var ev in KernEvents)
+            {
+                Kern += ev.GetElapsed();
+            }
+
+            return (IO, Kern);
+        }
+
+        static public void WaitQueue()
+        {
+            queue!.Finish();
         }
     }
 
@@ -119,39 +146,32 @@ namespace SparkCL
             } else {
                 IsPointer = false;
             }
-            
-            switch (typeName)
+
+            DataType = typeName switch
             {
-                case "float":
-                    DataType = typeof(float);
-                    break;
-                case "double":
-                    DataType = typeof(double);
-                    break;
-                case "int":
-                    DataType = typeof(int);
-                    break;
-                default:
-                    throw new NotImplementedException();
-            }
+                "float" => typeof(float),
+                "double" => typeof(double),
+                "int" => typeof(int),
+                _ => throw new NotImplementedException(),
+            };
         }
     }
     
     class Kernel
     {
-        SparkOCL.Kernel kernel;
+        SparkOCL.Kernel Inner;
         public NDRange GlobalWork { get; set; }
         public NDRange LocalWork { get; set; }
         uint lastPushed = 0;
 
-        public Event Execute()
+        public Event Execute(
+            Event[]? waitList
+        )
         {
-            Core.queue!.EnqueueNDRangeKernel(kernel, new NDRange(), GlobalWork, LocalWork, out var ev);
-            // HACK: ожидание завершения выполнения ядра для замера времени.
-            // Замедление работы не было обнаружено, но оно может возникнуть
-            // при постановке на очередь нескольких ядер
-            ev.Wait();
-            Core.KernTime += ev.GetElapsed();
+            Core.queue!.EnqueueNDRangeKernel(Inner, new NDRange(), GlobalWork, LocalWork, out var ev, waitList);
+            #if DEBUG_TIME
+                Core.KernEvents.Add(ev);
+            #endif
             return ev;
         }
         
@@ -159,7 +179,7 @@ namespace SparkCL
             SparkCL.Memory<T> mem)
         where T: unmanaged, INumber<T>
         {
-            kernel.SetArg(lastPushed, mem.buffer);
+            Inner.SetArg(lastPushed, mem.buffer);
             lastPushed++;
             return lastPushed;
         }
@@ -168,7 +188,7 @@ namespace SparkCL
             T arg)
         where T: unmanaged
         {
-            kernel.SetArg(lastPushed, arg);
+            Inner.SetArg(lastPushed, arg);
             lastPushed++;
             return lastPushed;
         }
@@ -178,7 +198,7 @@ namespace SparkCL
             T arg)
         where T: unmanaged
         {
-            kernel.SetArg(idx, arg);
+            Inner.SetArg(idx, arg);
         }
 
         public void SetArg<T>(
@@ -186,26 +206,26 @@ namespace SparkCL
             SparkCL.Memory<T> mem)
         where T: unmanaged, INumber<T>
         {
-            kernel.SetArg(idx, mem.buffer);
+            Inner.SetArg(idx, mem.buffer);
         }
 
         public void SetSize(
             uint idx,
             nuint sz)
         {
-            kernel.SetSize(idx, sz);
+            Inner.SetSize(idx, sz);
         }
         
         public ArgInfo GetArgInfo(uint arg_index)
         {
-            var name = kernel.GetArgTypeName(arg_index);
-            var qual = kernel.GetArgAddressQualifier(arg_index);
+            var name = Inner.GetArgTypeName(arg_index);
+            var qual = Inner.GetArgAddressQualifier(arg_index);
             return new ArgInfo(name, qual);
         }
 
         internal Kernel(SparkOCL.Kernel kernel, NDRange globalWork, NDRange localWork)
         {
-            this.kernel = kernel;
+            Inner = kernel;
             GlobalWork = globalWork;
             LocalWork = localWork;
         }
@@ -273,11 +293,14 @@ namespace SparkCL
         //}
 
         public Event Read(
-            bool blocking = true
+            bool blocking = true,
+            Event[]? wait_list = null
         )
         {
             Core.queue!.EnqueueReadBuffer(buffer, blocking, 0, array, out var ev);
-            Core.IOTime += ev.GetElapsed();
+            #if DEBUG_TIME
+                Core.IOEvents.Add(ev);
+            #endif
             return ev;
         }
 
@@ -286,24 +309,27 @@ namespace SparkCL
         )
         {
             Core.queue!.EnqueueWriteBuffer(buffer, blocking, 0, array, out var ev);
-            Core.IOTime += ev.GetElapsed();
+            #if DEBUG_TIME
+                Core.IOEvents.Add(ev);
+            #endif
             return ev;
         }
 
         public Event CopyTo(
-            Memory<T> destination
+            Memory<T> destination,
+            Event[]? waitList
         )
         {
             if (Count != destination.Count)
             {
                 throw new Exception("Source and destination sizes doesn't match");
             }
-            Core.queue!.EnqueueCopyBuffer(buffer, destination.buffer, 0, 0, Count, out var ev);
+            Core.queue!.EnqueueCopyBuffer(buffer, destination.buffer, 0, 0, Count, out var ev, waitList);
             ev.Wait();
             return ev;
         }
 
-        public float Dot(Memory<float> rhs)
+        public float DotHost(Memory<float> rhs)
         {
             float res = (float)BLAS.dot(
                 (int) this.Count,
@@ -313,7 +339,7 @@ namespace SparkCL
             return res;
         }
 
-        public double Dot(Memory<double> rhs)
+        public double DotHost(Memory<double> rhs)
         {
             double res = (double)BLAS.dot(
                 (int)this.Count,

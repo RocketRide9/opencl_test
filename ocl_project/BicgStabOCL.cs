@@ -1,9 +1,10 @@
 using System;
 using System.Diagnostics;
-using Quasar.Native;
+using SparkCL;
+using SparkOCL;
 using static Solvers.Shared;
 
-using Real = double;
+using Real = float;
 
 namespace Solvers.OpenCL
 {
@@ -70,11 +71,11 @@ namespace Solvers.OpenCL
                 kernP.SetArg(1, r);
                 kernP.SetArg(2, nu);
 
-            void PExecute(Real _w, Real _beta)
+            Event PExecute(Real _w, Real _beta, Event[] waitList)
             {
                 kernP.SetArg(3, _w);
                 kernP.SetArg(4, _beta);
-                kernP.Execute();
+                return kernP.Execute(waitList);
             }
 
             var kernMul = solvers.GetKernel(
@@ -87,10 +88,10 @@ namespace Solvers.OpenCL
                 kernMul.SetArg(2, jptr);
                 kernMul.SetArg(3, (uint)x.Count);
             
-            void MulExecute(SparkCL.Memory<Real> _a, SparkCL.Memory<Real> _b){
+            Event MulExecute(SparkCL.Memory<Real> _a, SparkCL.Memory<Real> _res, Event[] waitList){
                 kernMul.SetArg(4, _a);
-                kernMul.SetArg(5, _b);
-                kernMul.Execute();
+                kernMul.SetArg(5, _res);
+                return kernMul.Execute(waitList);
             }
                 
             var kernAxpy = solvers.GetKernel(
@@ -98,11 +99,11 @@ namespace Solvers.OpenCL
                 globalWork: new(x.Count),
                 localWork:  new(32)
             );
-            void AxpyExecute(Real _a, SparkCL.Memory<Real> _x, SparkCL.Memory<Real> _y) {
+            Event AxpyExecute(Real _a, SparkCL.Memory<Real> _x, SparkCL.Memory<Real> _y, Event[] waitList) {
                 kernAxpy.SetArg(0, _a);
                 kernAxpy.SetArg(1, _x);
                 kernAxpy.SetArg(2, _y);
-                kernAxpy.Execute();
+                return kernAxpy.Execute(waitList);
             }
             
             var kern1 = solvers.GetKernel(
@@ -115,18 +116,18 @@ namespace Solvers.OpenCL
                 globalWork: new(32),
                 localWork: new(32)
             );
-            Real DotExecute(SparkCL.Memory<Real> _x, SparkCL.Memory<Real> _y)
+            Real DotExecute(SparkCL.Memory<Real> _x, SparkCL.Memory<Real> _y, Event[] waitList)
             {
                 kern1.SetArg(0, (uint)_x.Count);
                 kern1.SetArg(1, _x);
                 kern1.SetArg(2, _y);
                 kern1.SetArg(3, dotpart);
-                kern1.Execute();
+                var k1 = kern1.Execute(waitList);
 
                 kern2.SetArg(0, dotpart);
                 kern2.SetArg(1, dotres);
-                kern2.Execute();
-                dotres.Read();
+                kern2.Execute([k1]);
+                dotres.Read(true);
 
                 return dotres[0];
             }
@@ -146,69 +147,78 @@ namespace Solvers.OpenCL
 
             // BiCGSTAB
             // 1.
-            prepare1.Execute();
+            var reqR = prepare1.Execute(null);
             // 2.
-            r.CopyTo(r_hat);
+            // r_hat можно один раз подождать
+            r.CopyTo(r_hat, [reqR]).Wait();
             // 3.
-            Real pp = DotExecute(r, r); // r_hat * r
+            Real pp = DotExecute(r, r, [reqR]); // r_hat * r
             // 4.
-            r.CopyTo(p);
+            Event reqP = r.CopyTo(p, [reqR]);
 
             int iter = 0;
             Real rr = 0;
+            Event? reqX = null;
             for (; iter < MAX_ITER; iter++)
             {
-                MulExecute(p, nu);
+                var reqNu = MulExecute(p, nu, [reqP]);
 
-                Real rnu = DotExecute(r_hat, nu);
+                Real rnu = DotExecute(r_hat, nu, [reqNu]);
                 Real alpha = pp / rnu;
 
                 // 3. h = x + alpha*p
-                x.CopyTo(h);
-                AxpyExecute(alpha, p, h);
+                Event reqH;
+                if (reqX == null)
+                {
+                    reqH = x.CopyTo(h, null);
+                } else {
+                    reqH = x.CopyTo(h, [reqX]);
+                }
+                reqH = AxpyExecute(alpha, p, h, [reqP, reqH]);
                 
                 // 4.
-                r.CopyTo(s);
-                AxpyExecute(-alpha, nu, s);
+                var reqS = r.CopyTo(s, [reqR]);
+                reqS = AxpyExecute(-alpha, nu, s, [reqS]);
 
-                Real ss = DotExecute(s, s);
+                Real ss = DotExecute(s, s, [reqS]);
                 if (ss < EPS)
                 {
                     (h, slae.x) = (x, h);
                     break;
                 }
 
-                MulExecute(s, t);
+                var reqT = MulExecute(s, t, [reqS]);
 
-                Real ts = DotExecute(s, t);
-                Real tt = DotExecute(t, t);
+                Real ts = DotExecute(s, t, [reqS, reqT]);
+                Real tt = DotExecute(t, t, [reqT, reqT]);
                 Real w = ts / tt;
 
                 // 8. 
-                h.CopyTo(x);
-                AxpyExecute(w, s, x);
+                reqX = h.CopyTo(x, [reqH]);
+                reqX = AxpyExecute(w, s, x, [reqS, reqX]);
 
                 // 9.
-                s.CopyTo(r);
-                AxpyExecute(-w, t, r);
+                reqR = s.CopyTo(r, [reqS]);
+                reqR = AxpyExecute(-w, t, r, [reqT, reqR]);
                 
-                rr = DotExecute(r, r);
+                rr = DotExecute(r, r, [reqR]);
                 if (rr < EPS)
                 {
                     break;
                 }
 
                 // 11-12.
-                Real pp1 = DotExecute(r, r_hat);
+                Real pp1 = DotExecute(r, r_hat, [reqR]);
                 Real beta = (pp1 / pp) * (alpha / w);
 
                 // 13.
-                PExecute(w, beta);
+                PExecute(w, beta, [reqP, reqR, reqNu]);
 
+                Core.WaitQueue();
                 pp = pp1;
             }
 
-             x.Read();
+            x.Read(true, [reqR]);
             return (rr, pp, iter);
         }
         
@@ -233,19 +243,20 @@ namespace Solvers.OpenCL
             Console.WriteLine($"rr = {rr}");
             Console.WriteLine($"pp = {pp}");
             Console.WriteLine($"max err. = {max_err}");
+            var (IOTime, KernTime) = SparkCL.Core.MeasureTime();
             ulong overhead = (ulong)sw_ocl.ElapsedMilliseconds
-                - (SparkCL.Core.IOTime + SparkCL.Core.KernTime) / 1_000_000;
+                - (IOTime + KernTime) / 1_000_000;
             Console.WriteLine($"Итерации: {iter}");
             Console.WriteLine($"BiCGSTAB с OpenCL: {sw_ocl.ElapsedMilliseconds}мс");
             Console.WriteLine($"Время на операции:");
-            ulong ioTime = SparkCL.Core.IOTime / 1_000_000;
+            ulong ioTime = IOTime / 1_000_000;
             if (ioTime < 1)
             {
                 Console.WriteLine($"\tIO: <1мс");
             } else {
                 Console.WriteLine($"\tIO: {ioTime}мс");
             }
-            Console.WriteLine($"\tКод OpenCL: {SparkCL.Core.KernTime/1_000_000}мс");
+            Console.WriteLine($"\tКод OpenCL: {KernTime/1_000_000}мс");
             Console.WriteLine($"\tНакладные расходы: {overhead}мс");
         }
 

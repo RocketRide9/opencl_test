@@ -4,7 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using Solvers;
 
-using Real = System.Double;
+using Real = float;
 using System.Linq;
 // using SparkOCL;
 // using SparkCL;
@@ -38,6 +38,7 @@ namespace HelloWorld
             s3.SolveAndBreakdown();
         }
         
+        /*
         static void axpy_test()
         {
             var arr = Enumerable.Range(1, 256).Select(i => (Real)0.5).ToArray();
@@ -83,6 +84,7 @@ namespace HelloWorld
             // }
         }
 
+        */
         static void DOT()
         {
             SparkCL.Core.Init();
@@ -108,7 +110,7 @@ namespace HelloWorld
 
             dot.SetArg(0, d1);
             dot.SetArg(1, d2);
-            dot.Execute();
+            dot.Execute(null);
             f32.Read();
 
             sw_gpu.Stop();

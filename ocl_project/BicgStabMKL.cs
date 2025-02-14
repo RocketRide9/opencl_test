@@ -4,8 +4,8 @@ using Quasar.Native;
 
 using static Solvers.Shared;
 
-using Real = double;
-using VectorReal = double[];
+using Real = float;
+using VectorReal = float[];
 
 namespace Solvers.MKL
 {

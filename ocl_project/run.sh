@@ -10,7 +10,7 @@ function run_release () {
 }
 
 function run_debug () {
-    (cd "$(dirname "$0")" && dotnet build --configuration Release && cd "./bin/Release/$DOTNET_VER" && "./$BIN_MAME")
+    (cd "$(dirname "$0")" && dotnet build --configuration Debug && cd "./bin/Debug/$DOTNET_VER" && "./$BIN_MAME")
 }
 
 # Ручная сборка и запуск программы из директории с исполняемым файлом
