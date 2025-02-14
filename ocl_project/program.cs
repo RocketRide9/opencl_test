@@ -110,7 +110,7 @@ namespace HelloWorld
 
             dot.SetArg(0, d1);
             dot.SetArg(1, d2);
-            dot.Execute(null);
+            dot.Execute();
             f32.Read();
 
             sw_gpu.Stop();

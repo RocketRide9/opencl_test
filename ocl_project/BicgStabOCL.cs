@@ -71,11 +71,11 @@ namespace Solvers.OpenCL
                 kernP.SetArg(1, r);
                 kernP.SetArg(2, nu);
 
-            Event PExecute(Real _w, Real _beta, Event[] waitList)
+            Event PExecute(Real _w, Real _beta)
             {
                 kernP.SetArg(3, _w);
                 kernP.SetArg(4, _beta);
-                return kernP.Execute(waitList);
+                return kernP.Execute();
             }
 
             var kernMul = solvers.GetKernel(
@@ -88,10 +88,10 @@ namespace Solvers.OpenCL
                 kernMul.SetArg(2, jptr);
                 kernMul.SetArg(3, (uint)x.Count);
             
-            Event MulExecute(SparkCL.Memory<Real> _a, SparkCL.Memory<Real> _res, Event[] waitList){
+            Event MulExecute(SparkCL.Memory<Real> _a, SparkCL.Memory<Real> _res){
                 kernMul.SetArg(4, _a);
                 kernMul.SetArg(5, _res);
-                return kernMul.Execute(waitList);
+                return kernMul.Execute();
             }
                 
             var kernAxpy = solvers.GetKernel(
@@ -99,11 +99,11 @@ namespace Solvers.OpenCL
                 globalWork: new(x.Count),
                 localWork:  new(32)
             );
-            Event AxpyExecute(Real _a, SparkCL.Memory<Real> _x, SparkCL.Memory<Real> _y, Event[] waitList) {
+            Event AxpyExecute(Real _a, SparkCL.Memory<Real> _x, SparkCL.Memory<Real> _y) {
                 kernAxpy.SetArg(0, _a);
                 kernAxpy.SetArg(1, _x);
                 kernAxpy.SetArg(2, _y);
-                return kernAxpy.Execute(waitList);
+                return kernAxpy.Execute();
             }
             
             var kern1 = solvers.GetKernel(
@@ -116,17 +116,17 @@ namespace Solvers.OpenCL
                 globalWork: new(32),
                 localWork: new(32)
             );
-            Real DotExecute(SparkCL.Memory<Real> _x, SparkCL.Memory<Real> _y, Event[] waitList)
+            Real DotExecute(SparkCL.Memory<Real> _x, SparkCL.Memory<Real> _y)
             {
                 kern1.SetArg(0, (uint)_x.Count);
                 kern1.SetArg(1, _x);
                 kern1.SetArg(2, _y);
                 kern1.SetArg(3, dotpart);
-                var k1 = kern1.Execute(waitList);
+                kern1.Execute();
 
                 kern2.SetArg(0, dotpart);
                 kern2.SetArg(1, dotres);
-                kern2.Execute([k1]);
+                kern2.Execute();
                 dotres.Read(true);
 
                 return dotres[0];
@@ -147,78 +147,73 @@ namespace Solvers.OpenCL
 
             // BiCGSTAB
             // 1.
-            var reqR = prepare1.Execute(null);
+            prepare1.Execute();
             // 2.
-            // r_hat можно один раз подождать
-            r.CopyTo(r_hat, [reqR]).Wait();
+            r.CopyTo(r_hat);
             // 3.
-            Real pp = DotExecute(r, r, [reqR]); // r_hat * r
+            Real pp = DotExecute(r, r); // r_hat * r
             // 4.
-            Event reqP = r.CopyTo(p, [reqR]);
+            r.CopyTo(p);
 
             int iter = 0;
             Real rr = 0;
-            Event? reqX = null;
             for (; iter < MAX_ITER; iter++)
             {
-                var reqNu = MulExecute(p, nu, [reqP]);
+                MulExecute(p, nu);
 
-                Real rnu = DotExecute(r_hat, nu, [reqNu]);
+                Real rnu = DotExecute(r_hat, nu);
                 Real alpha = pp / rnu;
 
                 // 3. h = x + alpha*p
-                Event reqH;
-                if (reqX == null)
-                {
-                    reqH = x.CopyTo(h, null);
-                } else {
-                    reqH = x.CopyTo(h, [reqX]);
-                }
-                reqH = AxpyExecute(alpha, p, h, [reqP, reqH]);
+                x.CopyTo(h);
+                
+                AxpyExecute(alpha, p, h);
                 
                 // 4.
-                var reqS = r.CopyTo(s, [reqR]);
-                reqS = AxpyExecute(-alpha, nu, s, [reqS]);
+                r.CopyTo(s);
+                AxpyExecute(-alpha, nu, s);
 
-                Real ss = DotExecute(s, s, [reqS]);
+                Real ss = DotExecute(s, s);
                 if (ss < EPS)
                 {
-                    (h, slae.x) = (x, h);
+                    // тогда h - решение. Предыдущий вектор x можно освободить
+                    x.Dispose();
+                    slae.x = h;
                     break;
                 }
 
-                var reqT = MulExecute(s, t, [reqS]);
+                MulExecute(s, t);
 
-                Real ts = DotExecute(s, t, [reqS, reqT]);
-                Real tt = DotExecute(t, t, [reqT, reqT]);
+                Real ts = DotExecute(s, t);
+                Real tt = DotExecute(t, t);
                 Real w = ts / tt;
 
                 // 8. 
-                reqX = h.CopyTo(x, [reqH]);
-                reqX = AxpyExecute(w, s, x, [reqS, reqX]);
+                h.CopyTo(x);
+                AxpyExecute(w, s, x);
 
                 // 9.
-                reqR = s.CopyTo(r, [reqS]);
-                reqR = AxpyExecute(-w, t, r, [reqT, reqR]);
+                s.CopyTo(r);
+                AxpyExecute(-w, t, r);
                 
-                rr = DotExecute(r, r, [reqR]);
+                rr = DotExecute(r, r);
                 if (rr < EPS)
                 {
                     break;
                 }
 
                 // 11-12.
-                Real pp1 = DotExecute(r, r_hat, [reqR]);
+                Real pp1 = DotExecute(r, r_hat);
                 Real beta = (pp1 / pp) * (alpha / w);
 
                 // 13.
-                PExecute(w, beta, [reqP, reqR, reqNu]);
+                PExecute(w, beta);
 
                 Core.WaitQueue();
                 pp = pp1;
             }
 
-            x.Read(true, [reqR]);
+            x.Read(true);
             return (rr, pp, iter);
         }
         

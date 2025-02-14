@@ -164,14 +164,21 @@ namespace SparkCL
         public NDRange LocalWork { get; set; }
         uint lastPushed = 0;
 
+        /// Blocking - Поставить ядро в очередь на выполнение и подождать его
+        /// waitList - Список событий, которые должны быть выполнены перед выполнением ядра.
         public Event Execute(
-            Event[]? waitList
+            bool blocking = true,
+            Event[]? waitList = null
         )
         {
             Core.queue!.EnqueueNDRangeKernel(Inner, new NDRange(), GlobalWork, LocalWork, out var ev, waitList);
             #if DEBUG_TIME
                 Core.KernEvents.Add(ev);
             #endif
+            if (blocking)
+            {
+                ev.Wait();
+            }
             return ev;
         }
         
@@ -317,7 +324,8 @@ namespace SparkCL
 
         public Event CopyTo(
             Memory<T> destination,
-            Event[]? waitList
+            bool blocking = true,
+            Event[]? waitList = null
         )
         {
             if (Count != destination.Count)
@@ -325,7 +333,13 @@ namespace SparkCL
                 throw new Exception("Source and destination sizes doesn't match");
             }
             Core.queue!.EnqueueCopyBuffer(buffer, destination.buffer, 0, 0, Count, out var ev, waitList);
-            ev.Wait();
+            #if DEBUG_TIME
+                Core.IOEvents.Add(ev);
+            #endif
+            if (blocking)
+            {
+                ev.Wait();
+            }
             return ev;
         }
 
