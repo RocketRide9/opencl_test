@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>disable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
@@ -11,6 +11,7 @@
   <ItemGroup>
     <PackageReference Include="Silk.NET.OpenCL" Version="2.22.0" />
     <PackageReference Include="TelmaQuasar.Native.Int" Version="2.0.0" />
+    <ProjectReference Include="../SparkCL/SparkCL.csproj" />
   </ItemGroup>
 
   <ItemGroup>
