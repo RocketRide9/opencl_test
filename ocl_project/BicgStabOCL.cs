@@ -36,10 +36,21 @@ namespace Solvers.OpenCL
             dotres= new SparkCL.Memory<Real>(1);
         }
         
+        static nuint PaddedTo(int initial, int multiplier)
+        {
+            if (initial % multiplier == 0)
+            {
+                return (nuint)initial;
+            } else {
+                return ((nuint)initial / 32 + 1 ) * 32;
+            }
+        }
+
         public (Real, Real, int) Solve()
         {
             // Вынос векторов в текущую область видимости
             var mat  = slae.mat;
+            var di   = slae.di;
             var f    = slae.f;
             var aptr = slae.aptr;
             var jptr = slae.jptr;
@@ -50,26 +61,27 @@ namespace Solvers.OpenCL
 
             var prepare1 = solvers.GetKernel(
                 "BiCGSTAB_prepare1",
-                globalWork: new(x.Count),
+                globalWork: new(PaddedTo(x.Count, 32)),
                 localWork:  new(32)
             );
                 prepare1.PushArg(mat);
+                prepare1.PushArg(di);
                 prepare1.PushArg(aptr);
                 prepare1.PushArg(jptr);
                 prepare1.PushArg((uint)x.Count);
                 prepare1.PushArg(r);
-                prepare1.PushArg(p);
                 prepare1.PushArg(f);
                 prepare1.PushArg(x);
 
             var kernP = solvers.GetKernel(
                 "BiCGSTAB_p",
-                globalWork: new(x.Count),
+                globalWork: new(PaddedTo(x.Count, 32)),
                 localWork: new(32)
             );
                 kernP.SetArg(0, p);
                 kernP.SetArg(1, r);
                 kernP.SetArg(2, nu);
+                kernP.SetArg(5, p.Count);
 
             Event PExecute(Real _w, Real _beta)
             {
@@ -80,29 +92,31 @@ namespace Solvers.OpenCL
 
             var kernMul = solvers.GetKernel(
                 "MSRMul",
-                globalWork: new(x.Count),
+                globalWork: new(PaddedTo(x.Count, 32)),
                 localWork:  new(32)
             );
                 kernMul.SetArg(0, mat);
-                kernMul.SetArg(1, aptr);
-                kernMul.SetArg(2, jptr);
-                kernMul.SetArg(3, (uint)x.Count);
+                kernMul.SetArg(1, di);
+                kernMul.SetArg(2, aptr);
+                kernMul.SetArg(3, jptr);
+                kernMul.SetArg(4, (uint)x.Count);
             
             Event MulExecute(SparkCL.Memory<Real> _a, SparkCL.Memory<Real> _res){
-                kernMul.SetArg(4, _a);
-                kernMul.SetArg(5, _res);
+                kernMul.SetArg(5, _a);
+                kernMul.SetArg(6, _res);
                 return kernMul.Execute();
             }
                 
             var kernAxpy = solvers.GetKernel(
                 "BLAS_axpy",
-                globalWork: new(x.Count),
+                globalWork: new(PaddedTo(x.Count, 32)),
                 localWork:  new(32)
             );
             Event AxpyExecute(Real _a, SparkCL.Memory<Real> _x, SparkCL.Memory<Real> _y) {
                 kernAxpy.SetArg(0, _a);
                 kernAxpy.SetArg(1, _x);
                 kernAxpy.SetArg(2, _y);
+                kernAxpy.SetArg(3, _y.Count);
                 return kernAxpy.Execute();
             }
             
@@ -213,7 +227,7 @@ namespace Solvers.OpenCL
                 pp = pp1;
             }
 
-            x.Read(true);
+            slae.x.Read(true);
             return (rr, pp, iter);
         }
         
@@ -226,7 +240,7 @@ namespace Solvers.OpenCL
 
             var x = slae.x;
             Real max_err = Math.Abs(x[0] - slae.ans[0]);
-            for (int i = 0; i < (int)slae.x.Count; i++)
+            for (int i = 0; i < slae.x.Count; i++)
             {
                 var err = Math.Abs(x[i] - slae.ans[i]);
                 if (err > max_err)

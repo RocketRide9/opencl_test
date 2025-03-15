@@ -20,6 +20,7 @@ namespace Solvers
     
         public static void MSRMul(
             VectorReal mat,
+            VectorReal di,
             VectorInt aptr,
             VectorInt jptr,
             int n,
@@ -29,10 +30,10 @@ namespace Solvers
             MyFor(0, n, i => {
                 int start = aptr[i];
                 int stop = aptr[i + 1];
-                Real dot = mat[i] * v[i];
+                Real dot = di[i] * v[i];
                 for (int a = start; a < stop; a++)
                 {
-                    dot += mat[a] * v[jptr[a - n]];
+                    dot += mat[a] * v[jptr[a]];
                 }
                 res[i] = dot;
             });
@@ -139,6 +140,7 @@ namespace Solvers
     public class HostSlae
     {
         public VectorReal mat ;
+        public VectorReal di  ;
         public VectorReal f   ;
         public VectorInt  aptr;
         public VectorInt  jptr;
@@ -148,6 +150,7 @@ namespace Solvers
         public HostSlae()
         {
             mat  = Shared.LoadArray<Real>(File.OpenText("../../../../slae/mat"));
+            di   = Shared.LoadArray<Real>(File.OpenText("../../../../slae/di"));
             f    = Shared.LoadArray<Real>(File.OpenText("../../../../slae/f"));
             aptr = Shared.LoadArray<int> (File.OpenText("../../../../slae/aptr"));
             jptr = Shared.LoadArray<int> (File.OpenText("../../../../slae/jptr"));
@@ -159,6 +162,7 @@ namespace Solvers
     public class OclSlae
     {
         public SparkCL.Memory<Real> mat ;
+        public SparkCL.Memory<Real> di  ;
         public SparkCL.Memory<Real> f   ;
         public SparkCL.Memory<int>  aptr;
         public SparkCL.Memory<int>  jptr;
@@ -168,6 +172,7 @@ namespace Solvers
         public OclSlae()
         {
             mat  = new SparkCL.Memory<Real>(File.OpenText("../../../../slae/mat"));
+            di   = new SparkCL.Memory<Real>(File.OpenText("../../../../slae/di"));
             f    = new SparkCL.Memory<Real>(File.OpenText("../../../../slae/f"));
             aptr = new SparkCL.Memory<int> (File.OpenText("../../../../slae/aptr"));
             jptr = new SparkCL.Memory<int> (File.OpenText("../../../../slae/jptr"));

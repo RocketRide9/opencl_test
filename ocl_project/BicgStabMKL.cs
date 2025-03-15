@@ -36,6 +36,7 @@ namespace Solvers.MKL
         {
             // Вынос векторов в текущую область видимости
             var mat  = slae.mat;
+            var di   = slae.di;
             var f    = slae.f;
             var aptr = slae.aptr;
             var jptr = slae.jptr;
@@ -44,7 +45,7 @@ namespace Solvers.MKL
             
             // BiCGSTAB
             // 1.
-            MSRMul(mat, aptr, jptr, x.Length, x, t);
+            MSRMul(mat, di, aptr, jptr, x.Length, x, t);
             f.CopyTo(r, 0);
             BLAS.axpy(x.Length, -1, t, r);
             // 2.
@@ -58,7 +59,7 @@ namespace Solvers.MKL
             Real rr = 0;
             for (; iter < MAX_ITER; iter++)
             {
-                MSRMul(mat, aptr, jptr, x.Length, p, nu);
+                MSRMul(mat, di, aptr, jptr, x.Length, p, nu);
                 
                 Real rnu = (Real)BLAS.dot(x.Length, nu, r_hat);
                 Real alpha = pp / rnu;
@@ -77,7 +78,7 @@ namespace Solvers.MKL
                     break;
                 }
                 
-                MSRMul(mat, aptr, jptr, x.Length, s, t);
+                MSRMul(mat, di, aptr, jptr, x.Length, s, t);
                 
                 Real ts = (Real)BLAS.dot(x.Length, s, t);
                 Real tt = (Real)BLAS.dot(x.Length, t, t);

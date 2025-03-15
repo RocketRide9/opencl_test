@@ -35,6 +35,7 @@ namespace Solvers.Host
         {
             // Вынос векторов в текущую область видимости
             var mat  = slae.mat;
+            var di   = slae.di;
             var f    = slae.f;
             var aptr = slae.aptr;
             var jptr = slae.jptr;
@@ -43,7 +44,7 @@ namespace Solvers.Host
             
             // BiCGSTAB
             // 1.
-            MSRMul(mat, aptr, jptr, x.Length, x, t);
+            MSRMul(mat, di, aptr, jptr, x.Length, x, t);
             MyFor(0, x.Length, i =>
             {
                 r[i] = f[i] - t[i];
@@ -59,7 +60,7 @@ namespace Solvers.Host
             Real rr = 0;        
             for (; iter < MAX_ITER; iter++)
             {
-                MSRMul(mat, aptr, jptr, x.Length, p, nu);
+                MSRMul(mat, di, aptr, jptr, x.Length, p, nu);
                 
                 Real rnu = Dot(nu, r_hat);
                 Real alpha = pp / rnu;
@@ -80,7 +81,7 @@ namespace Solvers.Host
                     break;
                 }
                 
-                MSRMul(mat, aptr, jptr, x.Length, s, t);
+                MSRMul(mat, di, aptr, jptr, x.Length, s, t);
                 
                 Real ts = Dot(s, t);
                 Real tt = Dot(t, t);

@@ -1,4 +1,4 @@
-n = int(2097152)
+n = int(2000000)
 # M = matrix(RDF, n)
 
 from pathlib import Path
@@ -8,9 +8,10 @@ random.seed(int(413))
 ans = [random.randint(1, 10) for i in range(n)]
 x = [1.0 for i in range(n)]
 
-aelem = [0.0 for i in range(n)]
-f = [0.0 for i in range(n)]
-aptr = [n]
+di = [0.0] * n
+aelem = [] # [0.0 for i in range(n)]
+f = [0.0] * n
+aptr = [0]
 jptr = []
 slides = [-8, -7, -4, -3, 0, 3, 4, 7, 8]
 
@@ -27,8 +28,8 @@ for i in range(n):
             jptr.append(i + j)
             dot += ans[i + j] * a
             row_count += 1
-    aelem[i] = row_sum + 1
-    dot += ans[i] * aelem[i]
+    di[i] = row_sum + 1
+    dot += ans[i] * di[i]
     f[i] = dot
     aptr.append(aptr[i] + row_count)
 # '''
@@ -75,35 +76,19 @@ for i in range(n):
 
 Path('slae').mkdir(exist_ok=True)
 
-with open('slae/mat', 'w', encoding="utf-8") as f_mat:
-    f_mat.write(f"{len(aelem)}\n")
-    for a in aelem:
-        f_mat.write(f"{a}\n")
-
-with open('slae/f', 'w', encoding="utf-8") as f_f:
-    f_f.write(f"{n}\n")
-    for a in f:
-        f_f.write(f"{a}\n")
-
-with open('slae/aptr', 'w', encoding="utf-8") as f_aptr:
-    f_aptr.write(f"{len(aptr)}\n")
-    for a in aptr:
-        f_aptr.write(f"{a}\n")
-
-with open('slae/jptr', 'w', encoding="utf-8") as f_jptr:
-    f_jptr.write(f"{len(jptr)}\n")
-    for a in jptr:
-        f_jptr.write(f"{a}\n")
-
-with open('slae/x', 'w', encoding="utf-8") as f_x:
-    f_x.write(f"{n}\n")
-    for a in x:
-        f_x.write(f"{a}\n")
-
-with open('slae/ans', 'w', encoding="utf-8") as f_ans:
-    f_ans.write(f"{n}\n")
-    for a in ans:
-        f_ans.write(f"{a}\n")
+def serialize_list(path, to_serialize: list):
+    with open(path, 'w', encoding="utf-8") as list_file:
+        list_file.write(f"{len(to_serialize)}\n")
+        for a in to_serialize:
+            list_file.write(f"{a}\n")
+    
+serialize_list('slae/mat',  aelem)
+serialize_list('slae/di',   di)
+serialize_list('slae/f',    f)
+serialize_list('slae/aptr', aptr)
+serialize_list('slae/jptr', jptr)
+serialize_list('slae/x',    x)
+serialize_list('slae/ans',  ans)
 
 print("exit")
 '''

@@ -3,6 +3,7 @@
 
 kernel void MSRMul(
     global const real *mat,
+    global const real *di,
     global const int *aptr,
     global const int *jptr,
     const int n,
@@ -11,14 +12,17 @@ kernel void MSRMul(
 {
     size_t row = get_global_id(0);
 
-    int start = aptr[row];
-    int stop = aptr[row + 1];
-    real dot = mat[row]*v[row];
-    for (int a = start; a < stop; a++)
+    if (row < n)
     {
-        dot += mat[a]*v[jptr[a-n]];
+        int start = aptr[row];
+        int stop = aptr[row + 1];
+        real dot = di[row]*v[row];
+        for (int a = start; a < stop; a++)
+        {
+            dot += mat[a]*v[jptr[a]];
+        }
+        res[row] = dot;
     }
-    res[row] = dot;
 }
 
 /*
@@ -44,23 +48,22 @@ float MSCMulSingle
 }
 */
 
-float MSRMulSingle
+real MSRMulSingle
 (
     global const real *mat,
+    global const real *di,
     global const int *aptr,
     global const int *jptr,
-    const int n,
+    const int row,
     global const real *v
 )
 {
-    uint row = get_global_id(0);
-
     int start = aptr[row];
     int stop = aptr[row + 1];
-    real dot = mat[row]*v[row];
+    real dot = di[row]*v[row];
     for (int a = start; a < stop; a++)
     {
-        dot += mat[a]*v[jptr[a-n]];
+        dot += mat[a]*v[jptr[a]];
     }
     return dot;
 }
@@ -105,19 +108,21 @@ kernel void BiCGSTAB_prepare1
 (
     // матрица
     global const real *mat,
+    global const real *di,
     global const int *aptr,
     global const int *jptr,
     const int n,
     // вспомогательные массивы
     global real *r,
-    global real *p,
     global const real *f,
     global const real *x
 )
 {
     uint i = get_global_id(0);
-    
-    r[i] = f[i] - MSRMulSingle(mat, aptr, jptr, n, x);
+    if (i < n)
+    {
+        r[i] = f[i] - MSRMulSingle(mat, di, aptr, jptr, i, x);
+    }
 }
 
 // y += a*x
@@ -125,24 +130,30 @@ kernel void BLAS_axpy
 (
     const real a,
     global const real *x,
-    global real *y
+    global real *y,
+    const int n
 )
 {
     uint i = get_global_id(0);
-    
-    y[i] += a * x[i];
+    if (i < n)
+    {
+        y[i] += a * x[i];
+    }
 }
 
 // y *= a
 kernel void BLAS_scale
 (
     const real a,
-    global real *y
+    global real *y,
+    const int n
 )
 {
     uint i = get_global_id(0);
-    
-    y[i] *= a;
+    if (i < n)
+    {
+        y[i] *= a;
+    }
 }
 
 kernel void BiCGSTAB_p
@@ -151,12 +162,15 @@ kernel void BiCGSTAB_p
     global const real *r,
     global const real *nu,
     const real w,
-    const real beta
+    const real beta,
+    const int n
 )
 {
     uint i = get_global_id(0);
-    
-    p[i] = r[i] + beta * (p[i] - w*nu[i]);
+    if (i < n)
+    {
+        p[i] = r[i] + beta * (p[i] - w*nu[i]);
+    }
 }
 
 // код взят отсюда https://github.com/CNugteren/CLBlast/blob/bd96941ac0633e8e7d09fd2475e0279be370b1e1/src/kernels/level1/xdot.opencl

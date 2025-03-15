@@ -3,7 +3,7 @@
 set -euxo pipefail
 
 BIN_MAME="ocl_test"
-DOTNET_VER="net8.0"
+DOTNET_VER="net9.0"
 
 function run_release () {
     (cd "$(dirname "$0")" && dotnet build --configuration Release && cd "./bin/Release/$DOTNET_VER" && "./$BIN_MAME")
