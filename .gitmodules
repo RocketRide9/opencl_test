@@ -1,3 +1,6 @@
 [submodule "SparkCL"]
 	path = SparkCL
 	url = git@github.com:RocketRide9/SparkCL.git
+[submodule "SparkAlgos"]
+	path = SparkAlgos
+	url = git@github.com:RocketRide9/SparkAlgos.git

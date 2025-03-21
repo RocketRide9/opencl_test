@@ -10,6 +10,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "benchmark", "benchmark\benc
 		{8C10AD25-0F13-432B-B82C-FB728808775F} = {8C10AD25-0F13-432B-B82C-FB728808775F}
 	EndProjectSection
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SparkAlgos", "SparkAlgos\SparkAlgos.csproj", "{30FF9166-C512-436C-A3DE-BE248DFA15E3}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SparkCL", "SparkCL\SparkCL.csproj", "{1BFD0422-FFEB-4753-AA79-54B027219052}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -24,6 +28,14 @@ Global
 		{0E79B893-0407-436D-9CD0-C405FFD11EB8}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{0E79B893-0407-436D-9CD0-C405FFD11EB8}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{0E79B893-0407-436D-9CD0-C405FFD11EB8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{30FF9166-C512-436C-A3DE-BE248DFA15E3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{30FF9166-C512-436C-A3DE-BE248DFA15E3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{30FF9166-C512-436C-A3DE-BE248DFA15E3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{30FF9166-C512-436C-A3DE-BE248DFA15E3}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1BFD0422-FFEB-4753-AA79-54B027219052}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1BFD0422-FFEB-4753-AA79-54B027219052}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1BFD0422-FFEB-4753-AA79-54B027219052}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1BFD0422-FFEB-4753-AA79-54B027219052}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

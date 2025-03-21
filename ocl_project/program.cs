@@ -21,10 +21,7 @@ namespace HelloWorld
         {
             SparkCL.Core.Init();
 
-            // axpy_test();
-            // return;
-
-             var s1 = new Solvers.Host.BiCGStab();
+            var s1 = new Solvers.Host.BiCGStab();
             s1.SolveAndBreakdown();
 
             Console.WriteLine();

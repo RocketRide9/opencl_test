@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net9.0</TargetFramework>
+    <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>disable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
@@ -12,30 +12,29 @@
     <PackageReference Include="Silk.NET.OpenCL" Version="2.22.0" />
     <PackageReference Include="TelmaQuasar.Native.Int" Version="2.0.0" />
     <ProjectReference Include="../SparkCL/SparkCL.csproj" />
+    <ProjectReference Include="../SparkAlgos/SparkAlgos.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="Solvers.cl">
+    <None Update="aptr">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-	<None Update="aptr">
-	  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-	</None>
-	<None Update="jptr">
-	  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-	</None>
-	<None Update="mat">
-	  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-	</None>
-	<None Update="f">
-	  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-	</None>
-	<None Update="x">
+    <None Update="jptr">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-	</None>
-	<None Update="ans">
+    </None>
+    <None Update="mat">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-	</None>
+    </None>
+    <None Update="f">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="x">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ans">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    
   </ItemGroup>
 
 </Project>
