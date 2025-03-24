@@ -12,28 +12,10 @@ namespace Solvers.OpenCL
     {
         OclSlae slae = new();
 
-        SparkCL.Memory<Real> r;
-        SparkCL.Memory<Real> r_hat;
-        SparkCL.Memory<Real> p;
-        SparkCL.Memory<Real> nu;
-        SparkCL.Memory<Real> h;
-        SparkCL.Memory<Real> s;
-        SparkCL.Memory<Real> t;
-        SparkCL.Memory<Real> dotpart;
-        SparkCL.Memory<Real> dotres;
         private bool disposedValue;
 
         public BiCGStab()
         {
-            r     = new SparkCL.Memory<Real>(slae.x.Count);
-            r_hat = new SparkCL.Memory<Real>(slae.x.Count);
-            p     = new SparkCL.Memory<Real>(slae.x.Count);
-            nu    = new SparkCL.Memory<Real>(slae.x.Count);
-            h     = new SparkCL.Memory<Real>(slae.x.Count);
-            s     = new SparkCL.Memory<Real>(slae.x.Count);
-            t     = new SparkCL.Memory<Real>(slae.x.Count);
-            dotpart=new SparkCL.Memory<Real>(32*2);
-            dotres= new SparkCL.Memory<Real>(1);
         }
         
         static nuint PaddedTo(int initial, int multiplier)
@@ -46,7 +28,7 @@ namespace Solvers.OpenCL
             }
         }
         
-        public (Real, Real, int) Solve()
+        public (SparkOCL.Array<Real>, Real, Real, int) Solve()
         {
             var solver = new SparkAlgos.BicgStab(
                 slae.mat,
@@ -55,7 +37,8 @@ namespace Solvers.OpenCL
                 slae.aptr,
                 slae.jptr,
                 slae.x,
-                MAX_ITER
+                MAX_ITER,
+                EPS
             );
 
             return solver.Solve();
@@ -65,7 +48,7 @@ namespace Solvers.OpenCL
         {
             var sw_ocl = new Stopwatch();
             sw_ocl.Start();
-            var (rr, pp, iter) = Solve();
+            var (ans, rr, pp, iter) = Solve();
             sw_ocl.Stop();
 
             var x = slae.x;
@@ -108,15 +91,6 @@ namespace Solvers.OpenCL
                     // TODO: освободить управляемое состояние (управляемые объекты)
                 }
 
-                r.Dispose();
-                r_hat.Dispose();
-                p.Dispose();
-                nu.Dispose();
-                h.Dispose();
-                s.Dispose();
-                t.Dispose();
-                dotpart.Dispose();
-                dotres.Dispose();
                 // TODO: освободить неуправляемые ресурсы (неуправляемые объекты) и переопределить метод завершения
                 // TODO: установить значение NULL для больших полей
                 disposedValue = true;

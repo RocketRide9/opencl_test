@@ -34,7 +34,7 @@ namespace HelloWorld
             using var s3 = new Solvers.OpenCL.BiCGStab();
             s3.SolveAndBreakdown();
         }
-        
+
         /*
         static void axpy_test()
         {
@@ -82,13 +82,14 @@ namespace HelloWorld
         }
 
         */
+#if false
         static void DOT()
         {
             SparkCL.Core.Init();
 
-            using var d1 = new SparkCL.Memory<Real>(File.OpenText("./x"));
-            using var d2 = new SparkCL.Memory<Real>(File.OpenText("./x"));
-            using var f32 = new SparkCL.Memory<Real>([0]);
+            using var d1 = new SparkOCL.Array<Real>(File.OpenText("./x"));
+            using var d2 = new SparkOCL.Array<Real>(File.OpenText("./x"));
+            using var f32 = new SparkOCL.Array<Real>([0]);
 
             var sw_gpu = new Stopwatch();
             sw_gpu.Start();
@@ -115,7 +116,7 @@ namespace HelloWorld
             Console.WriteLine($"dot = {f32[0]}");
             Console.WriteLine($"Time = {sw_gpu.ElapsedMilliseconds}");
         }
-        
+#endif
         static unsafe string? GetDeviceInfo(CL cl, nint device, DeviceInfo infoEnum)
         {
             cl.GetDeviceInfo(device, infoEnum, 0, null, out nuint nameSize);

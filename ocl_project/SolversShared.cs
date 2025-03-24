@@ -1,4 +1,4 @@
-#define HOST_PARALLEL
+//#define HOST_PARALLEL
 
 using System;
 using System.Globalization;
@@ -161,23 +161,23 @@ namespace Solvers
     
     public class OclSlae
     {
-        public SparkCL.Memory<Real> mat ;
-        public SparkCL.Memory<Real> di  ;
-        public SparkCL.Memory<Real> f   ;
-        public SparkCL.Memory<int>  aptr;
-        public SparkCL.Memory<int>  jptr;
-        public SparkCL.Memory<Real> x   ;
-        public SparkCL.Memory<Real> ans ;
+        public SparkOCL.Array<Real> mat ;
+        public SparkOCL.Array<Real> di  ;
+        public SparkOCL.Array<Real> f   ;
+        public SparkOCL.Array<int>  aptr;
+        public SparkOCL.Array<int>  jptr;
+        public SparkOCL.Array<Real> x   ;
+        public SparkOCL.Array<Real> ans ;
 
         public OclSlae()
         {
-            mat  = new SparkCL.Memory<Real>(File.OpenText("../../../../slae/mat"));
-            di   = new SparkCL.Memory<Real>(File.OpenText("../../../../slae/di"));
-            f    = new SparkCL.Memory<Real>(File.OpenText("../../../../slae/f"));
-            aptr = new SparkCL.Memory<int> (File.OpenText("../../../../slae/aptr"));
-            jptr = new SparkCL.Memory<int> (File.OpenText("../../../../slae/jptr"));
-            x    = new SparkCL.Memory<Real>(File.OpenText("../../../../slae/x"));
-            ans  = new SparkCL.Memory<Real>(File.OpenText("../../../../slae/ans"));
+            mat  = new SparkOCL.Array<Real>(File.OpenText("../../../../slae/mat"));
+            di   = new SparkOCL.Array<Real>(File.OpenText("../../../../slae/di"));
+            f    = new SparkOCL.Array<Real>(File.OpenText("../../../../slae/f"));
+            aptr = new SparkOCL.Array<int> (File.OpenText("../../../../slae/aptr"));
+            jptr = new SparkOCL.Array<int> (File.OpenText("../../../../slae/jptr"));
+            x    = new SparkOCL.Array<Real>(File.OpenText("../../../../slae/x"));
+            ans  = new SparkOCL.Array<Real>(File.OpenText("../../../../slae/ans"));
         }
     }
 }
